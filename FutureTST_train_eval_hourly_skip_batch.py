@@ -57,6 +57,7 @@ def training(epochs, loss_function, optimizer, model, train_dataloader, val_data
             output = model(batch.float().to(device)).squeeze(1)
             batch_loss = loss_function(output, train_real_vals)
             batch_loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
             optimizer.step()
 
             total_train_loss += batch_loss.item()
@@ -72,6 +73,7 @@ def training(epochs, loss_function, optimizer, model, train_dataloader, val_data
         #val_bar = tqdm(val_dataloader, desc=f"Epoch {epoch+1}/{epochs} [Valid]")
         with torch.no_grad():
             for batch in val_dataloader:
+                
                 val_output = model(batch.float().to(device)).squeeze(1)
                 val_real_vals = batch[:, -1, model.context_window_size:].float().to(device) 
 
@@ -150,7 +152,7 @@ if __name__ == "__main__":
     results_high = []
     results_low = []
     locations = []
-    x = pd.read_csv("datasets/SMFV2_Data.csv",index_col=0)
+    x = pd.read_csv("datasets/SMFV2_Data_withbasin.csv",index_col=0)
 
     ids = [1]
 
@@ -158,7 +160,7 @@ if __name__ == "__main__":
         print(f"Processing basin {basin_id}")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         locations.append(basin_id)
-        certain_basins = x
+        certain_basins = x[x['basin'] == basin_id]
         #basin = certain_basins[['Dayl(s)','PRCP(mm/day)','SRAD(W/m2)','SWE(mm)','Tmax(C)','Vp(Pa)','QObs(mm/d)']]
         basin = certain_basins[["HG (FT)","MAP (IN)","QR (CFS)"]]
 
@@ -191,17 +193,17 @@ if __name__ == "__main__":
         loss_function = torch.nn.MSELoss()
         optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-        model = training(1,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
+        model = training(50,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
 
 
-        # # Load best model
-        # try:
-        #     checkpoint = torch.load(path)
-        #     model.load_state_dict(checkpoint)
-        #     print(f"Model loaded from {path}")
-        # except Exception as e:
-        #     print(f"Error loading model from {path}: {e}")
-        #     continue
+        # Load best model
+        try:
+            checkpoint = torch.load(path)
+            model.load_state_dict(checkpoint)
+            print(f"Model loaded from {path}")
+        except Exception as e:
+            print(f"Error loading model from {path}: {e}")
+            continue
 
 
         # Evaluate model
@@ -209,16 +211,16 @@ if __name__ == "__main__":
 
 
         # # visualization
-        # plot_prediction_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+        plot_prediction_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
         
         # # high_low_flow_comparison
-        # plot_high_low_flow_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+        plot_high_low_flow_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
 
         # # detailed
-        # plot_detailed_prediction_results(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+        plot_detailed_prediction_results(real_vals, predicted_vals, basin_id, modelname='FutureTST')
 
         # # flow_duration_curve
-        # plot_flow_duration_curve(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+        plot_flow_duration_curve(real_vals, predicted_vals, basin_id, modelname='FutureTST')
 
 
         # Calculate metrics for different flow categories
@@ -242,9 +244,9 @@ if __name__ == "__main__":
     one_day_low_results = pd.DataFrame(results_low, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
 
     # Save results to CSV
-    one_day_results.to_csv('results/futuretst_results.csv')
-    one_day_high_results.to_csv('results/futuretst_high_results.csv')
-    one_day_low_results.to_csv('results/futuretst_low_results.csv')
+    one_day_results.to_csv('results/futuretst_hourly_results.csv')
+    one_day_high_results.to_csv('results/futuretst_hourly_high_results.csv')
+    one_day_low_results.to_csv('results/futuretst_hourly_low_results.csv')
 
 
     # Print summary statistics
