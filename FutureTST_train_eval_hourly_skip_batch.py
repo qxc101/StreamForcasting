@@ -48,12 +48,18 @@ def training(epochs, loss_function, optimizer, model, train_dataloader, val_data
             #         41.0003, 38.9874, 38.4930, 37.9986])
             # (Pdb) batch[0, 2, model.context_window_size:]
 
-            train_real_vals = batch[:, -1, model.context_window_size:].float().to(device)
-            if -999.0 in train_real_vals:
-                print("Found -999.0 in train_real_vals")
+            valid_indices = []
+            for i in range(batch.shape[0]):
+                if -999.0 not in batch[i]:
+                    valid_indices.append(i)
+            
+            if len(valid_indices) == 0:
+                print("All sequences in batch contain -999.0, skipping batch")
                 continue
-            if -999.0 in train_real_vals:
-                import pdb; pdb.set_trace()
+                
+            # Create a new batch with only valid sequences
+            batch = batch[valid_indices]
+            train_real_vals = batch[:, -1, model.context_window_size:].float().to(device)
             output = model(batch.float().to(device)).squeeze(1)
             batch_loss = loss_function(output, train_real_vals)
             batch_loss.backward()
@@ -73,7 +79,18 @@ def training(epochs, loss_function, optimizer, model, train_dataloader, val_data
         #val_bar = tqdm(val_dataloader, desc=f"Epoch {epoch+1}/{epochs} [Valid]")
         with torch.no_grad():
             for batch in val_dataloader:
+                valid_indices = []
+                for i in range(batch.shape[0]):
+                    if -999.0 not in batch[i]:
+                        valid_indices.append(i)
                 
+                if len(valid_indices) == 0:
+                    print("All sequences in batch contain -999.0, skipping batch")
+                    continue
+                    
+                # Create a new batch with only valid sequences
+                batch = batch[valid_indices]
+            
                 val_output = model(batch.float().to(device)).squeeze(1)
                 val_real_vals = batch[:, -1, model.context_window_size:].float().to(device) 
 
@@ -110,11 +127,16 @@ def evaluation(model, test_dataloader):
     with torch.no_grad():
         for batch in test_dataloader:
             # Check for -999.0 values in the batch
-            if -999.0 in batch:
-                print("Found -999.0 in batch")
+            valid_indices = []
+            for i in range(batch.shape[0]):
+                if -999.0 not in batch[i]:
+                    valid_indices.append(i)
+            
+            if len(valid_indices) == 0:
+                print("All sequences in batch contain -999.0, skipping batch")
                 continue
-            if -999.0 in batch:
-                import pdb; pdb.set_trace()
+            batch = batch[valid_indices]
+            
             test_output = model(batch.float().to(device)).squeeze(1)
             test_real_vals = batch[:, -1, model.context_window_size:].to(device)
             
@@ -143,7 +165,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_transformer_layers', type=int, default=2, help='Number of transformer layers')
     parser.add_argument('--mlp_size', type=int, default=128, help='Size of MLP layer')
     parser.add_argument('--num_heads', type=int, default=8, help='Number of attention heads')
-    parser.add_argument('--mlp_dropout', type=float, default=0.2, help='Dropout rate for MLP')
+    parser.add_argument('--mlp_dropout', type=float, default=0.1, help='Dropout rate for MLP')
     parser.add_argument('--embedding_dropout', type=float, default=0.1, help='Dropout rate for embeddings')
     
     args = parser.parse_args()
@@ -191,7 +213,7 @@ if __name__ == "__main__":
 
 
         loss_function = torch.nn.MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
         model = training(50,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
 
