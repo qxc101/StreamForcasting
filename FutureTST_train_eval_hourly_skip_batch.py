@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import geopandas as gpd
 from copy import deepcopy
 from tqdm import tqdm
-
+import argparse
 from datasets.preprocessing import create_timeseries_sequences, nse, data_creation
 from datasets.postprocessing import (
     calculate_metrics_for_flow_category,
@@ -126,115 +126,142 @@ def evaluation(model, test_dataloader):
     return all_outputs, all_real_vals
 
 
-
-results = []
-results_high = []
-results_low = []
-locations = []
-x = pd.read_csv("datasets/SMFV2_Data.csv",index_col=0)
-
-ids = [1]
-
-
-for basin_id in ids:
-    print(f"Processing basin {basin_id}")
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    locations.append(basin_id)
-    certain_basins = x
-    #basin = certain_basins[['Dayl(s)','PRCP(mm/day)','SRAD(W/m2)','SWE(mm)','Tmax(C)','Vp(Pa)','QObs(mm/d)']]
-    basin = certain_basins[["HG (FT)","MAP (IN)","QR (CFS)"]]
-
-
-    batch_size = 256
-    time_series_size = 300
-    pred_size = 12
-    num_channels = 3
-    path = 'results/FutureTST_hourly_best.pth'
-    print(certain_basins.shape)
-    train_dataloader,val_dataloader,test_dataloader = data_creation(basin,time_series_size,pred_size,batch_size,batch_size,batch_size) 
-    #Past 365 Days, pred_size Day Future, Batch Sizes for train, val, and test
-
-    model = FutureTST(context_window_size=time_series_size,patch_size=16, stride_len=8, d_model=256,
-                  num_transformer_layers=2, mlp_size=128, num_heads=8, mlp_dropout=0.2,
-                  pred_size=pred_size, embedding_dropout=0.1,input_channels=num_channels)
+if __name__ == "__main__":
+    # Add command line argument parsing
+    parser = argparse.ArgumentParser(description='Train and evaluate FutureTST model for stream forecasting')
+    parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training, validation, and testing')
+    parser.add_argument('--time_series_size', type=int, default=24, help='Size of the time series context window')
+    parser.add_argument('--pred_size', type=int, default=12, help='Size of the prediction window')
+    parser.add_argument('--num_channels', type=int, default=3, help='Number of input channels')
+    parser.add_argument('--model_path', type=str, default='results/FutureTST_hourly_best.pth', 
+                        help='Path to save/load the model')
+    parser.add_argument('--patch_size', type=int, default=32, help='Size of patches for the model')
+    parser.add_argument('--stride_len', type=int, default=8, help='Stride length for patching')
+    parser.add_argument('--d_model', type=int, default=256, help='Model dimension')
+    parser.add_argument('--num_transformer_layers', type=int, default=2, help='Number of transformer layers')
+    parser.add_argument('--mlp_size', type=int, default=128, help='Size of MLP layer')
+    parser.add_argument('--num_heads', type=int, default=8, help='Number of attention heads')
+    parser.add_argument('--mlp_dropout', type=float, default=0.2, help='Dropout rate for MLP')
+    parser.add_argument('--embedding_dropout', type=float, default=0.1, help='Dropout rate for embeddings')
     
-
-
-    loss_function = torch.nn.MSELoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-
-    model = training(1,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
-
-
-    # # Load best model
-    # try:
-    #     checkpoint = torch.load(path)
-    #     model.load_state_dict(checkpoint)
-    #     print(f"Model loaded from {path}")
-    # except Exception as e:
-    #     print(f"Error loading model from {path}: {e}")
-    #     continue
-
-
-    # Evaluate model
-    predicted_vals, real_vals = evaluation(model, test_dataloader)
-
-
-    # # visualization
-    # plot_prediction_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+    args = parser.parse_args()
     
-    # # high_low_flow_comparison
-    # plot_high_low_flow_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+    results = []
+    results_high = []
+    results_low = []
+    locations = []
+    x = pd.read_csv("datasets/SMFV2_Data.csv",index_col=0)
 
-    # # detailed
-    # plot_detailed_prediction_results(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+    ids = [1]
 
-    # # flow_duration_curve
-    # plot_flow_duration_curve(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+    for basin_id in ids:
+        print(f"Processing basin {basin_id}")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        locations.append(basin_id)
+        certain_basins = x
+        #basin = certain_basins[['Dayl(s)','PRCP(mm/day)','SRAD(W/m2)','SWE(mm)','Tmax(C)','Vp(Pa)','QObs(mm/d)']]
+        basin = certain_basins[["HG (FT)","MAP (IN)","QR (CFS)"]]
+
+        # Use command line arguments
+        batch_size = args.batch_size
+        time_series_size = args.time_series_size
+        pred_size = args.pred_size
+        num_channels = args.num_channels
+        path = args.model_path
+        
+        print(certain_basins.shape)
+        train_dataloader,val_dataloader,test_dataloader = data_creation(basin,time_series_size,pred_size,batch_size,batch_size,batch_size) 
+        #Past 365 Days, pred_size Day Future, Batch Sizes for train, val, and test
+
+        model = FutureTST(context_window_size=time_series_size,
+                    patch_size=args.patch_size, 
+                    stride_len=args.stride_len, 
+                    d_model=args.d_model,
+                    num_transformer_layers=args.num_transformer_layers, 
+                    mlp_size=args.mlp_size, 
+                    num_heads=args.num_heads, 
+                    mlp_dropout=args.mlp_dropout,
+                    pred_size=pred_size, 
+                    embedding_dropout=args.embedding_dropout,
+                    input_channels=num_channels)
+
+        
 
 
+        loss_function = torch.nn.MSELoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-    # Calculate metrics for different flow categories
-    metrics_all = calculate_metrics_for_flow_category(real_vals, predicted_vals)
-    metrics_high = calculate_metrics_for_flow_category(real_vals, predicted_vals, (None, 90))
-    metrics_low = calculate_metrics_for_flow_category(real_vals, predicted_vals, (10, None))
-    
-    results.append(metrics_all)
-    results_high.append(metrics_high)
-    results_low.append(metrics_low)
-    
-    print(f"Basin {basin_id} - All flows: KGE={metrics_all[0]:.4f}, NSE={metrics_all[1]:.4f}, MSE={metrics_all[2]:.4f}, RMSE={metrics_all[3]:.4f}")
-    print(f"Basin {basin_id} - High flows: KGE={metrics_high[0]:.4f}, NSE={metrics_high[1]:.4f}, MSE={metrics_high[2]:.4f}, RMSE={metrics_all[3]:.4f}")
-    print(f"Basin {basin_id} - Low flows: KGE={metrics_low[0]:.4f}, NSE={metrics_low[1]:.4f}, MSE={metrics_low[2]:.4f}, RMSE={metrics_all[3]:.4f}")
-    
+        model = training(1,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
 
 
-# Create DataFrames for results
-one_day_results = pd.DataFrame(results, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
-one_day_high_results = pd.DataFrame(results_high, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
-one_day_low_results = pd.DataFrame(results_low, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
+        # # Load best model
+        # try:
+        #     checkpoint = torch.load(path)
+        #     model.load_state_dict(checkpoint)
+        #     print(f"Model loaded from {path}")
+        # except Exception as e:
+        #     print(f"Error loading model from {path}: {e}")
+        #     continue
 
-# Save results to CSV
-one_day_results.to_csv('results/futuretst_results.csv')
-one_day_high_results.to_csv('results/futuretst_high_results.csv')
-one_day_low_results.to_csv('results/futuretst_low_results.csv')
+
+        # Evaluate model
+        predicted_vals, real_vals = evaluation(model, test_dataloader)
 
 
-# Print summary statistics
-print("\n=== Results Summary ===")
-print("All Data:")
-print(one_day_results.describe())
+        # # visualization
+        # plot_prediction_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+        
+        # # high_low_flow_comparison
+        # plot_high_low_flow_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
 
-print("\nHigh Flow Data:")
-print(one_day_high_results.describe())
+        # # detailed
+        # plot_detailed_prediction_results(real_vals, predicted_vals, basin_id, modelname='FutureTST')
 
-print("\nLow Flow Data:")
-print(one_day_low_results.describe())
+        # # flow_duration_curve
+        # plot_flow_duration_curve(real_vals, predicted_vals, basin_id, modelname='FutureTST')
 
-# Find best and worst basins
-best_nse_basin = one_day_results['NSE'].idxmax()
-worst_nse_basin = one_day_results['NSE'].idxmin()
-print(f"\nBasin with highest NSE: {best_nse_basin} (NSE = {one_day_results['NSE'].max():.4f})")
-print(f"Basin with lowest NSE: {worst_nse_basin} (NSE = {one_day_results['NSE'].min():.4f})")
+
+        # Calculate metrics for different flow categories
+        metrics_all = calculate_metrics_for_flow_category(real_vals, predicted_vals)
+        metrics_high = calculate_metrics_for_flow_category(real_vals, predicted_vals, (None, 90))
+        metrics_low = calculate_metrics_for_flow_category(real_vals, predicted_vals, (10, None))
+        
+        results.append(metrics_all)
+        results_high.append(metrics_high)
+        results_low.append(metrics_low)
+        
+        print(f"Basin {basin_id} - All flows: KGE={metrics_all[0]:.4f}, NSE={metrics_all[1]:.4f}, MSE={metrics_all[2]:.4f}, RMSE={metrics_all[3]:.4f}")
+        print(f"Basin {basin_id} - High flows: KGE={metrics_high[0]:.4f}, NSE={metrics_high[1]:.4f}, MSE={metrics_high[2]:.4f}, RMSE={metrics_all[3]:.4f}")
+        print(f"Basin {basin_id} - Low flows: KGE={metrics_low[0]:.4f}, NSE={metrics_low[1]:.4f}, MSE={metrics_low[2]:.4f}, RMSE={metrics_all[3]:.4f}")
+        
+
+
+    # Create DataFrames for results
+    one_day_results = pd.DataFrame(results, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
+    one_day_high_results = pd.DataFrame(results_high, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
+    one_day_low_results = pd.DataFrame(results_low, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
+
+    # Save results to CSV
+    one_day_results.to_csv('results/futuretst_results.csv')
+    one_day_high_results.to_csv('results/futuretst_high_results.csv')
+    one_day_low_results.to_csv('results/futuretst_low_results.csv')
+
+
+    # Print summary statistics
+    print("\n=== Results Summary ===")
+    print("All Data:")
+    print(one_day_results.describe())
+
+    print("\nHigh Flow Data:")
+    print(one_day_high_results.describe())
+
+    print("\nLow Flow Data:")
+    print(one_day_low_results.describe())
+
+    # Find best and worst basins
+    best_nse_basin = one_day_results['NSE'].idxmax()
+    worst_nse_basin = one_day_results['NSE'].idxmin()
+    print(f"\nBasin with highest NSE: {best_nse_basin} (NSE = {one_day_results['NSE'].max():.4f})")
+    print(f"Basin with lowest NSE: {worst_nse_basin} (NSE = {one_day_results['NSE'].min():.4f})")
 
 
