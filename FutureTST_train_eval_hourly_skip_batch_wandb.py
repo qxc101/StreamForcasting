@@ -167,11 +167,11 @@ SWEEP_DICT = {
     "method": "bayes",
     "metric": {"name": "val_loss", "goal": "minimize"},
     "parameters": {
-        "context_window_size": {"values": [24, 96, 384]},
+        "context_window_size": {"values": [24, 48, 72]},
         "patch_size": {"values": [16, 32, 64]},
         "stride_len": {"values": [4, 8, 16]},
         "d_model": {"values": [128, 256, 512]},
-        "num_transformer_layers": {"values": [2, 8, 12]},
+        "num_transformer_layers": {"values": [2, 8]},
         "mlp_size": {"values": [64, 128, 256]},
         "num_heads": {"values": [2, 8, 16]},
         "mlp_dropout": {"values": [0.0, 0.1, 0.2]},

@@ -180,12 +180,17 @@ if __name__ == "__main__":
     ids = [1]
     if args.decay:
         decay_pred_sizes = [6, 12, 24, 36, 48]
+        decay_time_series_sizes = [24, 24, 36, 48, 96]
     else:
         decay_pred_sizes = [args.pred_size]
 
-    for decay_pred_size in decay_pred_sizes:
+    for decay_pred_size, decay_time_series_size in zip(decay_pred_sizes, decay_time_series_sizes):
         for basin_id in ids:
             print(f"Processing basin {basin_id}")
+            if args.decay:
+                model_path = f"results/FutureTST_hourly_best_basin{basin_id}_pred{decay_pred_size}.pth"
+            else:
+                model_path = args.model_path
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             locations.append(basin_id)
             certain_basins = x[x['basin'] == basin_id]
@@ -194,11 +199,11 @@ if __name__ == "__main__":
 
             # Use command line arguments
             batch_size = args.batch_size
-            time_series_size = args.time_series_size * 2
+            time_series_size = decay_time_series_size
             pred_size = decay_pred_size
             print(f"Prediction size: {pred_size}, time series size: {time_series_size}")
             num_channels = args.num_channels
-            path = args.model_path
+            path = model_path
             
             print(certain_basins.shape)
             train_dataloader,val_dataloader,test_dataloader = data_creation(basin,time_series_size,pred_size,batch_size,batch_size,batch_size) 
