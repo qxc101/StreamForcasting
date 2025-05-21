@@ -171,20 +171,22 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    results = []
-    results_high = []
-    results_low = []
-    locations = []
     x = pd.read_csv("datasets/SMFV2_Data_withbasin.csv",index_col=0)
 
     ids = [1]
     if args.decay:
-        decay_pred_sizes = [6, 12, 24, 36, 48]
-        decay_time_series_sizes = [24, 24, 36, 48, 96]
+        # decay_pred_sizes = [6, 12, 24, 36, 48]
+        # decay_time_series_sizes = [24, 24, 48, 72, 96]
+        decay_pred_sizes = [36, 48]
+        decay_time_series_sizes = [72, 96]
     else:
         decay_pred_sizes = [args.pred_size]
 
     for decay_pred_size, decay_time_series_size in zip(decay_pred_sizes, decay_time_series_sizes):
+        results = []
+        results_high = []
+        results_low = []
+        locations = []
         for basin_id in ids:
             print(f"Processing basin {basin_id}")
             if args.decay:
@@ -224,7 +226,7 @@ if __name__ == "__main__":
             loss_function = torch.nn.MSELoss()
             optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
-            model = training(50,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
+            model = training(20,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
 
 
             # Load best model
