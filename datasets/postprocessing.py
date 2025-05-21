@@ -435,3 +435,276 @@ def calculate_metrics_for_flow_category(real_vals, predicted_vals, percentile=No
     rmse = np.sqrt(mse)
     
     return (kge, nse_val, mse, rmse)
+
+def plot_nse_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=None, modelname='FutureTST', save_dir='plots/performance/'):
+    """
+    Calculate NSE for each prediction time step and plot results.
+    
+    Args:
+        real_vals: Numpy array of real values
+        predicted_vals: Numpy array of predicted values
+        plot: Whether to generate a plot (default True)
+        basin_id: Basin ID for plot title (optional)
+        modelname: Model name for file naming (default 'model')
+        save_dir: Directory to save the plot (default 'plots/nse_timesteps')
+    
+    Returns:
+        ts_nse: Numpy array of NSE values for each time step
+    """
+    ts_nse = np.zeros(real_vals.shape[1])
+    for ts in range(real_vals.shape[1]):
+        real_vals_selected_ts = real_vals[:, ts]
+        predicted_vals_selected_ts = predicted_vals[:, ts]
+        nse_val = 1 - (np.sum((real_vals_selected_ts - predicted_vals_selected_ts)**2) 
+                       / np.sum((real_vals_selected_ts - np.mean(real_vals_selected_ts))**2))
+        ts_nse[ts] = nse_val
+    
+    # Create bar chart for NSE values
+    if plot:
+        os.makedirs(save_dir, exist_ok=True)
+        
+        plt.figure(figsize=(12, 6))
+        
+        # Create x-axis labels (hours ahead)
+        horizons = np.arange(1, len(ts_nse) + 1)
+        
+        # Plot the NSE values as bars
+        bars = plt.bar(horizons, ts_nse, color='b', alpha=0.7)
+        
+        # Add a horizontal line at NSE = 0 (baseline)
+        plt.axhline(y=0, color='gray', linestyle='--', alpha=0.7)
+        
+        # Add value labels above/below each bar
+        for i, bar in enumerate(bars):
+            height = bar.get_height()
+            if ts_nse[i] >= 0:
+                y_pos = ts_nse[i] + 0.02
+                va = 'bottom'
+            else:
+                y_pos = ts_nse[i] - 0.06
+                va = 'top'
+            plt.text(bar.get_x() + bar.get_width()/2., y_pos,
+                    f'{ts_nse[i]:.3f}', ha='center', va=va, 
+                    fontsize=9, rotation=90)
+        
+        # Add title and labels
+        title = f'NSE by Prediction Time Step'
+        if basin_id is not None:
+            title = f'Basin {basin_id}: {title}'
+        plt.title(title, fontsize=14)
+        plt.xlabel('Prediction Time Step (Hours Ahead)', fontsize=12)
+        plt.ylabel('Nash-Sutcliffe Efficiency (NSE)', fontsize=12)
+        
+        # Set y-axis limits to make the plot look better
+        plt.ylim(0, 1)
+        
+        # Add grid for better readability
+        plt.grid(axis='y', linestyle='--', alpha=0.4)
+        
+        # Add average NSE reference line
+        avg_nse = np.mean(ts_nse)
+        plt.axhline(y=avg_nse, color='red', linestyle='-', alpha=0.7)
+        plt.text(horizons[-1] * 0.98, avg_nse * 1.05, f'Avg NSE: {avg_nse:.3f}', 
+                 ha='right', va='bottom', color='red', fontweight='bold',
+                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="red", alpha=0.8))
+        
+        # Ensure a tight layout
+        plt.tight_layout()
+        
+        # Save the figure
+        filename = f'nse_timesteps_{modelname}_basin{basin_id}_pred{len(ts_nse)}'
+        if basin_id is not None:
+            filename += f'_basin_{basin_id}'
+        plt.savefig(f'{save_dir}/{filename}.png', dpi=300, bbox_inches='tight')
+        
+        print(f"NSE by time step plot saved to {save_dir}/{filename}.png")
+        plt.close()
+    
+    return ts_nse
+
+def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=None, modelname='FutureTST', save_dir='plots/performance/'):
+    """
+    Create a scatter plot of observed vs predicted values for all time steps.
+    
+    Args:
+        real_vals: Numpy array of real values, shape (n_samples, n_time_steps)
+        predicted_vals: Numpy array of predicted values, shape (n_samples, n_time_steps)
+        plot: Whether to generate a plot (default True)
+        basin_id: Basin ID for plot title (optional)
+        modelname: Model name for file naming (default 'FutureTST')
+        save_dir: Directory to save the plot (default 'plots/performance/')
+    
+    Returns:
+        correlation: Pearson correlation coefficient between observed and predicted values
+    """
+    if plot:
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # Set up figure with 1 main plot and 12 small subplots (one for each time step)
+        fig = plt.figure(figsize=(16, 12))
+        
+        # Create main subplot that takes up most of the space
+        main_ax = plt.subplot2grid((4, 4), (0, 0), colspan=4, rowspan=2)
+        
+        # Create color map for different time steps
+        colors = plt.cm.viridis(np.linspace(0, 1, real_vals.shape[1]))
+        
+        # Create markers for different time steps
+        markers = ['o', 's', 'D', '^', 'v', '<', '>', 'p', '*', 'h', 'H', 'd']
+        if real_vals.shape[1] > len(markers):
+            # If we have more time steps than markers, reuse markers
+            markers = markers * (real_vals.shape[1] // len(markers) + 1)
+        
+        # Filter valid values across all predictions
+        valid_indices = ~np.isnan(real_vals) & ~np.isnan(predicted_vals) & (real_vals >= 0)
+        
+        # Plot all time steps together in the main plot with different colors
+        all_real = []
+        all_pred = []
+        for t in range(real_vals.shape[1]):
+            # Get data for this time step
+            valid_idx_t = valid_indices[:, t]
+            real_t = real_vals[valid_idx_t, t]
+            pred_t = predicted_vals[valid_idx_t, t]
+            
+            # Skip if no valid data
+            if len(real_t) == 0:
+                continue
+                
+            all_real.extend(real_t)
+            all_pred.extend(pred_t)
+            
+            # Plot with distinct color and marker for this time step
+            main_ax.scatter(real_t, pred_t, 
+                         color=colors[t], 
+                         marker=markers[t], 
+                         s=30, 
+                         alpha=0.6,
+                         label=f'T+{t+1}')
+        
+        # Calculate overall statistics
+        if len(all_real) > 0:
+            all_real = np.array(all_real)
+            all_pred = np.array(all_pred)
+            
+            # Find min and max for axes limits
+            min_val = min(np.min(all_real), np.min(all_pred))
+            max_val = max(np.max(all_real), np.max(all_pred))
+            
+            # Add some padding
+            range_val = max_val - min_val
+            min_val = max(0, min_val - range_val * 0.05)
+            max_val = max_val + range_val * 0.05
+            
+            # Add diagonal line (perfect prediction)
+            main_ax.plot([min_val, max_val], [min_val, max_val], 'k--', alpha=0.8, label='1:1 Line')
+            
+            # Add regression line
+            z = np.polyfit(all_real, all_pred, 1)
+            p = np.poly1d(z)
+            x_range = np.linspace(min_val, max_val, 100)
+            main_ax.plot(x_range, p(x_range), 'r-', alpha=0.8, label=f'Best Fit: y = {z[0]:.3f}x + {z[1]:.3f}')
+            
+            # Calculate correlation
+            correlation = np.corrcoef(all_real, all_pred)[0, 1]
+            
+            # Calculate NSE
+            nse = 1 - (np.sum((all_real - all_pred)**2) / np.sum((all_real - np.mean(all_real))**2))
+            
+            # Add stats as text
+            stats_text = f"R²: {correlation**2:.3f}\nNSE: {nse:.3f}\nn: {len(all_real)}"
+            main_ax.text(0.05, 0.95, stats_text, transform=main_ax.transAxes,
+                      verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            
+            # Set limits
+            main_ax.set_xlim(min_val, max_val)
+            main_ax.set_ylim(min_val, max_val)
+        
+        # Add labels and title for main plot
+        main_ax.set_xlabel('Observed', fontsize=14)
+        main_ax.set_ylabel('Predicted', fontsize=14)
+        title = 'Observed vs Predicted Values (All Time Steps)'
+        if basin_id is not None:
+            title = f'Basin {basin_id}: {title}'
+        main_ax.set_title(title, fontsize=16, fontweight='bold')
+        main_ax.legend(loc='upper left', bbox_to_anchor=(1.01, 1), fontsize=10)
+        
+        # Create small subplots for each time step
+        for t in range(min(12, real_vals.shape[1])):
+            # Calculate subplot position
+            row = 2 + t // 4
+            col = t % 4
+            
+            ax = plt.subplot2grid((4, 4), (row, col))
+            
+            # Get data for this time step
+            valid_idx_t = valid_indices[:, t]
+            real_t = real_vals[valid_idx_t, t]
+            pred_t = predicted_vals[valid_idx_t, t]
+            
+            # Skip if no valid data
+            if len(real_t) == 0:
+                ax.text(0.5, 0.5, 'No valid data', ha='center', va='center')
+                ax.set_title(f'T+{t+1}')
+                continue
+            
+            # Plot
+            ax.scatter(real_t, pred_t, color=colors[t], marker=markers[t], s=15, alpha=0.6)
+            
+            # Calculate statistics for this time step
+            if len(real_t) > 1:
+                # Calculate correlation
+                correlation_t = np.corrcoef(real_t, pred_t)[0, 1]
+                
+                # Calculate NSE
+                nse_t = 1 - (np.sum((real_t - pred_t)**2) / np.sum((real_t - np.mean(real_t))**2))
+                
+                # Add stats as text
+                stats_text = f"R²: {correlation_t**2:.2f}\nNSE: {nse_t:.2f}"
+                ax.text(0.05, 0.95, stats_text, transform=ax.transAxes, fontsize=8,
+                      verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            
+            # Find min and max for axes limits
+            min_val_t = min(np.min(real_t), np.min(pred_t))
+            max_val_t = max(np.max(real_t), np.max(pred_t))
+            
+            # Add some padding
+            range_val_t = max_val_t - min_val_t
+            min_val_t = max(0, min_val_t - range_val_t * 0.05)
+            max_val_t = max_val_t + range_val_t * 0.05
+            
+            # Add diagonal line (perfect prediction)
+            ax.plot([min_val_t, max_val_t], [min_val_t, max_val_t], 'k--', alpha=0.8)
+            
+            # Set limits
+            ax.set_xlim(min_val_t, max_val_t)
+            ax.set_ylim(min_val_t, max_val_t)
+            
+            # Set title
+            ax.set_title(f'T+{t+1}', fontsize=10)
+            
+            # Only add labels on the left and bottom edges
+            if col == 0:
+                ax.set_ylabel('Predicted', fontsize=9)
+            else:
+                ax.set_yticklabels([])
+                
+            if row == 3:
+                ax.set_xlabel('Observed', fontsize=9)
+            else:
+                ax.set_xticklabels([])
+            
+            # Reduce tick label size
+            ax.tick_params(axis='both', which='major', labelsize=8)
+        
+        plt.tight_layout()
+        
+        # Save the figure
+        filename = f'obs_vs_pred_{modelname}'
+        if basin_id is not None:
+            filename += f'_basin_{basin_id}'
+        plt.savefig(f'{save_dir}/{filename}.png', dpi=300, bbox_inches='tight')
+        
+        print(f"Observed vs Predicted scatter plot saved to {save_dir}/{filename}.png")
+        plt.close()
+    

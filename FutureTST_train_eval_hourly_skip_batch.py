@@ -15,7 +15,8 @@ from datasets.postprocessing import (
     plot_prediction_comparison, 
     plot_high_low_flow_comparison, 
     plot_detailed_prediction_results, 
-    plot_flow_duration_curve
+    plot_flow_duration_curve,
+    plot_nse_of_pred_time_step
     )
 from models.futureTST import FutureTST
 
@@ -146,7 +147,7 @@ def evaluation(model, test_dataloader):
     # Concatenate all batches
     all_outputs = torch.cat(all_outputs, dim=0).numpy()
     all_real_vals = torch.cat(all_real_vals, dim=0).numpy()
-    
+    # import pdb; pdb.set_trace()
     return all_outputs, all_real_vals
 
 
@@ -168,7 +169,7 @@ if __name__ == "__main__":
     parser.add_argument('--mlp_dropout', type=float, default=0.1, help='Dropout rate for MLP')
     parser.add_argument('--embedding_dropout', type=float, default=0.1, help='Dropout rate for embeddings')
     parser.add_argument('--decay', '-dc', action='store_true', default=False, help='If we are investigating decay rate')
-    
+    parser.add_argument('--eval_only', '-eo', action='store_true', default=False, help='If we are only evaluating the model')
     args = parser.parse_args()
     
     x = pd.read_csv("datasets/SMFV2_Data_withbasin.csv",index_col=0)
@@ -181,6 +182,7 @@ if __name__ == "__main__":
         decay_time_series_sizes = [72, 96]
     else:
         decay_pred_sizes = [args.pred_size]
+        decay_time_series_sizes = [args.time_series_size]
 
     for decay_pred_size, decay_time_series_size in zip(decay_pred_sizes, decay_time_series_sizes):
         results = []
@@ -189,10 +191,8 @@ if __name__ == "__main__":
         locations = []
         for basin_id in ids:
             print(f"Processing basin {basin_id}")
-            if args.decay:
-                model_path = f"results/FutureTST_hourly_best_basin{basin_id}_pred{decay_pred_size}.pth"
-            else:
-                model_path = args.model_path
+            model_path = f"results/FutureTST_hourly_best_basin{basin_id}_pred{decay_pred_size}.pth"
+
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             locations.append(basin_id)
             certain_basins = x[x['basin'] == basin_id]
@@ -226,17 +226,16 @@ if __name__ == "__main__":
             loss_function = torch.nn.MSELoss()
             optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
-            model = training(20,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
+            if args.eval_only == False:
+                model = training(20,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
 
 
             # Load best model
-            try:
-                checkpoint = torch.load(path)
-                model.load_state_dict(checkpoint)
-                print(f"Model loaded from {path}")
-            except Exception as e:
-                print(f"Error loading model from {path}: {e}")
-                continue
+
+            checkpoint = torch.load(path, map_location=torch.device('cpu'))
+            model.load_state_dict(checkpoint)
+            print(f"Model loaded from {path}")
+
 
 
             # Evaluate model
@@ -261,6 +260,8 @@ if __name__ == "__main__":
             metrics_high = calculate_metrics_for_flow_category(real_vals, predicted_vals, (None, 90))
             metrics_low = calculate_metrics_for_flow_category(real_vals, predicted_vals, (10, None))
             
+            ts_nse = plot_nse_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
+
             results.append(metrics_all)
             results_high.append(metrics_high)
             results_low.append(metrics_low)
