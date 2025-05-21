@@ -167,6 +167,7 @@ if __name__ == "__main__":
     parser.add_argument('--num_heads', type=int, default=8, help='Number of attention heads')
     parser.add_argument('--mlp_dropout', type=float, default=0.1, help='Dropout rate for MLP')
     parser.add_argument('--embedding_dropout', type=float, default=0.1, help='Dropout rate for embeddings')
+    parser.add_argument('--decay', '-dc', action='store_true', default=False, help='If we are investigating decay rate')
     
     args = parser.parse_args()
     
@@ -177,115 +178,118 @@ if __name__ == "__main__":
     x = pd.read_csv("datasets/SMFV2_Data_withbasin.csv",index_col=0)
 
     ids = [1]
+    if args.decay:
+        decay_pred_sizes = [6, 12, 24, 36, 48]
+    else:
+        decay_pred_sizes = [args.pred_size]
 
-    for basin_id in ids:
-        print(f"Processing basin {basin_id}")
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        locations.append(basin_id)
-        certain_basins = x[x['basin'] == basin_id]
-        #basin = certain_basins[['Dayl(s)','PRCP(mm/day)','SRAD(W/m2)','SWE(mm)','Tmax(C)','Vp(Pa)','QObs(mm/d)']]
-        basin = certain_basins[["HG (FT)","MAP (IN)","QR (CFS)"]]
+    for decay_pred_size in decay_pred_sizes:
+        for basin_id in ids:
+            print(f"Processing basin {basin_id}")
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            locations.append(basin_id)
+            certain_basins = x[x['basin'] == basin_id]
+            #basin = certain_basins[['Dayl(s)','PRCP(mm/day)','SRAD(W/m2)','SWE(mm)','Tmax(C)','Vp(Pa)','QObs(mm/d)']]
+            basin = certain_basins[["HG (FT)","MAP (IN)","QR (CFS)"]]
 
-        # Use command line arguments
-        batch_size = args.batch_size
-        time_series_size = args.time_series_size
-        pred_size = args.pred_size
-        num_channels = args.num_channels
-        path = args.model_path
-        
-        print(certain_basins.shape)
-        train_dataloader,val_dataloader,test_dataloader = data_creation(basin,time_series_size,pred_size,batch_size,batch_size,batch_size) 
-        #Past 365 Days, pred_size Day Future, Batch Sizes for train, val, and test
+            # Use command line arguments
+            batch_size = args.batch_size
+            time_series_size = args.time_series_size * 2
+            pred_size = decay_pred_size
+            print(f"Prediction size: {pred_size}, time series size: {time_series_size}")
+            num_channels = args.num_channels
+            path = args.model_path
+            
+            print(certain_basins.shape)
+            train_dataloader,val_dataloader,test_dataloader = data_creation(basin,time_series_size,pred_size,batch_size,batch_size,batch_size) 
+            #Past 365 Days, pred_size Day Future, Batch Sizes for train, val, and test
 
-        model = FutureTST(context_window_size=time_series_size,
-                    patch_size=args.patch_size, 
-                    stride_len=args.stride_len, 
-                    d_model=args.d_model,
-                    num_transformer_layers=args.num_transformer_layers, 
-                    mlp_size=args.mlp_size, 
-                    num_heads=args.num_heads, 
-                    mlp_dropout=args.mlp_dropout,
-                    pred_size=pred_size, 
-                    embedding_dropout=args.embedding_dropout,
-                    input_channels=num_channels)
+            model = FutureTST(context_window_size=time_series_size,
+                        patch_size=args.patch_size, 
+                        stride_len=args.stride_len, 
+                        d_model=args.d_model,
+                        num_transformer_layers=args.num_transformer_layers, 
+                        mlp_size=args.mlp_size, 
+                        num_heads=args.num_heads, 
+                        mlp_dropout=args.mlp_dropout,
+                        pred_size=pred_size, 
+                        embedding_dropout=args.embedding_dropout,
+                        input_channels=num_channels)
 
-        
+            loss_function = torch.nn.MSELoss()
+            optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
-
-        loss_function = torch.nn.MSELoss()
-        optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-
-        model = training(50,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
-
-
-        # Load best model
-        try:
-            checkpoint = torch.load(path)
-            model.load_state_dict(checkpoint)
-            print(f"Model loaded from {path}")
-        except Exception as e:
-            print(f"Error loading model from {path}: {e}")
-            continue
+            model = training(50,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
 
 
-        # Evaluate model
-        predicted_vals, real_vals = evaluation(model, test_dataloader)
+            # Load best model
+            try:
+                checkpoint = torch.load(path)
+                model.load_state_dict(checkpoint)
+                print(f"Model loaded from {path}")
+            except Exception as e:
+                print(f"Error loading model from {path}: {e}")
+                continue
 
 
-        # # visualization
-        plot_prediction_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
-        
-        # # high_low_flow_comparison
-        plot_high_low_flow_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
-
-        # # detailed
-        plot_detailed_prediction_results(real_vals, predicted_vals, basin_id, modelname='FutureTST')
-
-        # # flow_duration_curve
-        plot_flow_duration_curve(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+            # Evaluate model
+            predicted_vals, real_vals = evaluation(model, test_dataloader)
 
 
-        # Calculate metrics for different flow categories
-        metrics_all = calculate_metrics_for_flow_category(real_vals, predicted_vals)
-        metrics_high = calculate_metrics_for_flow_category(real_vals, predicted_vals, (None, 90))
-        metrics_low = calculate_metrics_for_flow_category(real_vals, predicted_vals, (10, None))
-        
-        results.append(metrics_all)
-        results_high.append(metrics_high)
-        results_low.append(metrics_low)
-        
-        print(f"Basin {basin_id} - All flows: KGE={metrics_all[0]:.4f}, NSE={metrics_all[1]:.4f}, MSE={metrics_all[2]:.4f}, RMSE={metrics_all[3]:.4f}")
-        print(f"Basin {basin_id} - High flows: KGE={metrics_high[0]:.4f}, NSE={metrics_high[1]:.4f}, MSE={metrics_high[2]:.4f}, RMSE={metrics_all[3]:.4f}")
-        print(f"Basin {basin_id} - Low flows: KGE={metrics_low[0]:.4f}, NSE={metrics_low[1]:.4f}, MSE={metrics_low[2]:.4f}, RMSE={metrics_all[3]:.4f}")
-        
+            # # visualization
+            plot_prediction_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+            
+            # # high_low_flow_comparison
+            plot_high_low_flow_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+
+            # # detailed
+            plot_detailed_prediction_results(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+
+            # # flow_duration_curve
+            plot_flow_duration_curve(real_vals, predicted_vals, basin_id, modelname='FutureTST')
 
 
-    # Create DataFrames for results
-    one_day_results = pd.DataFrame(results, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
-    one_day_high_results = pd.DataFrame(results_high, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
-    one_day_low_results = pd.DataFrame(results_low, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
+            # Calculate metrics for different flow categories
+            metrics_all = calculate_metrics_for_flow_category(real_vals, predicted_vals)
+            metrics_high = calculate_metrics_for_flow_category(real_vals, predicted_vals, (None, 90))
+            metrics_low = calculate_metrics_for_flow_category(real_vals, predicted_vals, (10, None))
+            
+            results.append(metrics_all)
+            results_high.append(metrics_high)
+            results_low.append(metrics_low)
+            
+            print(f"Basin {basin_id} - All flows: KGE={metrics_all[0]:.4f}, NSE={metrics_all[1]:.4f}, MSE={metrics_all[2]:.4f}, RMSE={metrics_all[3]:.4f}")
+            print(f"Basin {basin_id} - High flows: KGE={metrics_high[0]:.4f}, NSE={metrics_high[1]:.4f}, MSE={metrics_high[2]:.4f}, RMSE={metrics_all[3]:.4f}")
+            print(f"Basin {basin_id} - Low flows: KGE={metrics_low[0]:.4f}, NSE={metrics_low[1]:.4f}, MSE={metrics_low[2]:.4f}, RMSE={metrics_all[3]:.4f}")
+            
 
-    # Save results to CSV
-    one_day_results.to_csv('results/futuretst_hourly_results.csv')
-    one_day_high_results.to_csv('results/futuretst_hourly_high_results.csv')
-    one_day_low_results.to_csv('results/futuretst_hourly_low_results.csv')
+
+        # Create DataFrames for results
+        one_day_results = pd.DataFrame(results, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
+        one_day_high_results = pd.DataFrame(results_high, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
+        one_day_low_results = pd.DataFrame(results_low, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
+
+        # Save results to CSV
+        one_day_results.to_csv(f'results/futuretst_hourly_results_pred{decay_pred_size}.csv')
+        one_day_high_results.to_csv(f'results/futuretst_hourly_high_results_pred{decay_pred_size}.csv')
+        one_day_low_results.to_csv(f'results/futuretst_hourly_low_results_pred{decay_pred_size}.csv')
 
 
-    # Print summary statistics
-    print("\n=== Results Summary ===")
-    print("All Data:")
-    print(one_day_results.describe())
+        # Print summary statistics
+        print("\n=== Results Summary ===")
+        print("All Data:")
+        print(one_day_results.describe())
 
-    print("\nHigh Flow Data:")
-    print(one_day_high_results.describe())
+        print("\nHigh Flow Data:")
+        print(one_day_high_results.describe())
 
-    print("\nLow Flow Data:")
-    print(one_day_low_results.describe())
+        print("\nLow Flow Data:")
+        print(one_day_low_results.describe())
 
-    # Find best and worst basins
-    best_nse_basin = one_day_results['NSE'].idxmax()
-    worst_nse_basin = one_day_results['NSE'].idxmin()
-    print(f"\nBasin with highest NSE: {best_nse_basin} (NSE = {one_day_results['NSE'].max():.4f})")
-    print(f"Basin with lowest NSE: {worst_nse_basin} (NSE = {one_day_results['NSE'].min():.4f})")
+        # Find best and worst basins
+        best_nse_basin = one_day_results['NSE'].idxmax()
+        worst_nse_basin = one_day_results['NSE'].idxmin()
+        print(f"\nBasin with highest NSE: {best_nse_basin} (NSE = {one_day_results['NSE'].max():.4f})")
+        print(f"Basin with lowest NSE: {worst_nse_basin} (NSE = {one_day_results['NSE'].min():.4f})")
 
 

@@ -27,6 +27,17 @@ def training(epochs, patience, loss_fn, optim, model, train_loader, val_loader):
         pbar = tqdm(train_loader, desc=f"Epoch {epoch+1}/{epochs} [Train]")
         for batch in pbar:
             optim.zero_grad()
+            valid_indices = []
+            for i in range(batch.shape[0]):
+                if -999.0 not in batch[i]:
+                    valid_indices.append(i)
+            
+            if len(valid_indices) == 0:
+                print("All sequences in batch contain -999.0, skipping batch")
+                continue
+                
+            # Create a new batch with only valid sequences
+            batch = batch[valid_indices]
             y_true = batch[:, -1, model.context_window_size:].float().to(DEVICE)
             y_pred = model(batch.float().to(DEVICE)).squeeze(1)
             loss = loss_fn(y_pred, y_true)
@@ -41,6 +52,19 @@ def training(epochs, patience, loss_fn, optim, model, train_loader, val_loader):
         val_loss, outs, reals = 0.0, [], []
         with torch.no_grad():
             for batch in val_loader:
+                valid_indices = []
+                valid_indices = []
+                for i in range(batch.shape[0]):
+                    if -999.0 not in batch[i]:
+                        valid_indices.append(i)
+                
+                if len(valid_indices) == 0:
+                    print("All sequences in batch contain -999.0, skipping batch")
+                    continue
+                    
+                # Create a new batch with only valid sequences
+                batch = batch[valid_indices]
+                
                 y_true = batch[:, -1, model.context_window_size:].float().to(DEVICE)
                 y_pred = model(batch.float().to(DEVICE)).squeeze(1)
                 loss = loss_fn(y_pred, y_true)
@@ -77,6 +101,17 @@ def evaluation(model, test_loader):
     outs, reals = [], []
     with torch.no_grad():
         for batch in test_loader:
+            valid_indices = []
+            for i in range(batch.shape[0]):
+                if -999.0 not in batch[i]:
+                    valid_indices.append(i)
+            
+            if len(valid_indices) == 0:
+                print("All sequences in batch contain -999.0, skipping batch")
+                continue
+                
+            # Create a new batch with only valid sequences
+            batch = batch[valid_indices]
             y_true = batch[:, -1, model.context_window_size:].float().to(DEVICE)
             y_pred = model(batch.float().to(DEVICE)).squeeze(1)
             outs.append(y_pred.cpu())
@@ -133,14 +168,14 @@ SWEEP_DICT = {
     "metric": {"name": "val_loss", "goal": "minimize"},
     "parameters": {
         "context_window_size": {"values": [24, 96, 384]},
-        "patch_size": {"values": [16, 32]},
-        "stride_len": {"values": [8]},
-        "d_model": {"values": [256, 512]},
-        "num_transformer_layers": {"values": [2, 8]},
-        "mlp_size": {"values": [64, 128]},
-        "num_heads": {"values": [2, 8]},
-        "mlp_dropout": {"values": [0.1, 0.2]},
-        "embedding_dropout": {"values": [0.0, 0.1]},
+        "patch_size": {"values": [16, 32, 64]},
+        "stride_len": {"values": [4, 8, 16]},
+        "d_model": {"values": [128, 256, 512]},
+        "num_transformer_layers": {"values": [2, 8, 12]},
+        "mlp_size": {"values": [64, 128, 256]},
+        "num_heads": {"values": [2, 8, 16]},
+        "mlp_dropout": {"values": [0.0, 0.1, 0.2]},
+        "embedding_dropout": {"values": [0.0, 0.1, 0.2]},
         "lr": {"values": [1e-3, 1e-4]},
         "batch_size": {"values": [256]},
         "epochs": {"value": 50},         # maximum length
