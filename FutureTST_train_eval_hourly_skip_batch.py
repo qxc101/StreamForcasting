@@ -16,7 +16,8 @@ from datasets.postprocessing import (
     plot_high_low_flow_comparison, 
     plot_detailed_prediction_results, 
     plot_flow_duration_curve,
-    plot_nse_of_pred_time_step
+    plot_nse_of_pred_time_step,
+    plot_ob_vs_pred_time_step
     )
 from models.futureTST import FutureTST
 
@@ -234,6 +235,7 @@ if __name__ == "__main__":
 
             checkpoint = torch.load(path, map_location=torch.device('cpu'))
             model.load_state_dict(checkpoint)
+            model.to(device)
             print(f"Model loaded from {path}")
 
 
@@ -261,6 +263,7 @@ if __name__ == "__main__":
             metrics_low = calculate_metrics_for_flow_category(real_vals, predicted_vals, (10, None))
             
             ts_nse = plot_nse_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
+            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', period=None)
 
             results.append(metrics_all)
             results_high.append(metrics_high)
