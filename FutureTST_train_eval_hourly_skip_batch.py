@@ -17,7 +17,9 @@ from datasets.postprocessing import (
     plot_detailed_prediction_results, 
     plot_flow_duration_curve,
     plot_nse_of_pred_time_step,
-    plot_ob_vs_pred_time_step
+    plot_ob_vs_pred_time_step,
+    plot_kge_of_pred_time_step,
+    plot_detailed_prediction_results_multistep
     )
 from models.futureTST import FutureTST
 
@@ -256,14 +258,17 @@ if __name__ == "__main__":
             # # flow_duration_curve
             plot_flow_duration_curve(real_vals, predicted_vals, basin_id, modelname='FutureTST')
 
+            ts_nse = plot_nse_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
+            ts_kge = plot_kge_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
+            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=600, end=800)
+            plot_detailed_prediction_results_multistep(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+
 
             # Calculate metrics for different flow categories
             metrics_all = calculate_metrics_for_flow_category(real_vals, predicted_vals)
             metrics_high = calculate_metrics_for_flow_category(real_vals, predicted_vals, (None, 90))
             metrics_low = calculate_metrics_for_flow_category(real_vals, predicted_vals, (10, None))
             
-            ts_nse = plot_nse_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
-            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', period=None)
 
             results.append(metrics_all)
             results_high.append(metrics_high)

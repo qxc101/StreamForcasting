@@ -512,9 +512,8 @@ def plot_nse_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1,
         plt.tight_layout()
         
         # Save the figure
-        filename = f'nse_timesteps_{modelname}_basin{basin_id}_pred{len(ts_nse)}'
-        if basin_id is not None:
-            filename += f'_basin_{basin_id}'
+        filename = f'nse_timesteps_{modelname}_basin{basin_id}_pred{len(ts_nse)}_basin{basin_id}'
+
         plt.savefig(f'{save_dir}/{filename}.png', dpi=300, bbox_inches='tight')
         
         print(f"NSE by time step plot saved to {save_dir}/{filename}.png")
@@ -522,18 +521,111 @@ def plot_nse_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1,
     
     return ts_nse
 
-def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, modelname='FutureTST', save_dir='plots/performance/', period=None):
-    if period is None:
-        period = real_vals.shape[0] + 11
+def plot_kge_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, modelname='FutureTST', save_dir='plots/performance/'):
+    """
+    Calculate NSE for each prediction time step and plot results.
+    
+    Args:
+        real_vals: Numpy array of real values
+        predicted_vals: Numpy array of predicted values
+        plot: Whether to generate a plot (default True)
+        basin_id: Basin ID for plot title (optional)
+        modelname: Model name for file naming (default 'model')
+        save_dir: Directory to save the plot (default 'plots/nse_timesteps')
+    
+    Returns:
+        ts_nse: Numpy array of NSE values for each time step
+    """
+    ts_kge = np.zeros(real_vals.shape[1])
+    for ts in range(real_vals.shape[1]):
+
+        real_vals_selected_ts = real_vals[:, ts]
+        predicted_vals_selected_ts = predicted_vals[:, ts]
+
+        r = np.corrcoef(real_vals_selected_ts, predicted_vals_selected_ts)[0, 1]
+        alpha = np.std(predicted_vals_selected_ts) / np.std(real_vals_selected_ts)
+        beta = np.mean(predicted_vals_selected_ts) / np.mean(real_vals_selected_ts)
+        ts_kge[ts] = 1 - np.sqrt((r - 1)**2 + (alpha - 1)**2 + (beta - 1)**2)
+    
+    # Create bar chart for NSE values
+    if plot:
+        os.makedirs(save_dir, exist_ok=True)
+        
+        plt.figure(figsize=(12, 6))
+        
+        # Create x-axis labels (hours ahead)
+        horizons = np.arange(1, len(ts_kge) + 1)
+        
+        # Plot the NSE values as bars
+        bars = plt.bar(horizons, ts_kge, color='b', alpha=0.7)
+        
+        # Add a horizontal line at NSE = 0 (baseline)
+        plt.axhline(y=0, color='gray', linestyle='--', alpha=0.7)
+        
+        # Add value labels above/below each bar
+        for i, bar in enumerate(bars):
+            height = bar.get_height()
+            if ts_kge[i] >= 0:
+                y_pos = ts_kge[i] + 0.02
+                va = 'bottom'
+            else:
+                y_pos = ts_kge[i] - 0.06
+                va = 'top'
+            plt.text(bar.get_x() + bar.get_width()/2., y_pos,
+                    f'{ts_kge[i]:.3f}', ha='center', va=va, 
+                    fontsize=9, rotation=90)
+        
+        # Add title and labels
+        title = f'KGE by Prediction Time Step'
+        if basin_id is not None:
+            title = f'Basin {basin_id}: {title}'
+        plt.title(title, fontsize=14)
+        plt.xlabel('Prediction Time Step (Hours Ahead)', fontsize=12)
+        plt.ylabel('KGE', fontsize=12)
+        
+        # Set y-axis limits to make the plot look better
+        plt.ylim(0, 1)
+        
+        # Add grid for better readability
+        plt.grid(axis='y', linestyle='--', alpha=0.4)
+        
+        # Add average NSE reference line
+        avg_nse = np.mean(ts_kge)
+        plt.axhline(y=avg_nse, color='red', linestyle='-', alpha=0.7)
+        plt.text(horizons[-1] * 0.98, avg_nse * 1.05, f'Avg NSE: {avg_nse:.3f}', 
+                 ha='right', va='bottom', color='red', fontweight='bold',
+                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="red", alpha=0.8))
+        
+        # Ensure a tight layout
+        plt.tight_layout()
+        
+        # Save the figure
+        filename = f'kge_timesteps_{modelname}_basin{basin_id}_pred{len(ts_kge)}_basin{basin_id}'
+        plt.savefig(f'{save_dir}/{filename}.png', dpi=300, bbox_inches='tight')
+        
+        print(f"KGE by time step plot saved to {save_dir}/{filename}.png")
+        plt.close()
+    
+    return ts_kge
+
+def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, modelname='FutureTST', save_dir='plots/performance/', start=None, end=None):
+    if start is None and end is None:
+        print("Both start and end are None, using default values.")
+        start = 0
+        end = real_vals.shape[0] + 11
+    elif start is None:
+        start = 0
+    elif end is None:
+        end = real_vals.shape[0] + 11
     pred_lines = []
-    real_vals = np.concatenate((real_vals[:, 0], real_vals[-1, 1:]), axis=0)[:period]
+    real_vals = np.concatenate((real_vals[:, 0], real_vals[-1, 1:]), axis=0)[start:end]
     print(real_vals.shape)
     for i in range(predicted_vals.shape[1]):
         front = np.zeros(i)
         back = np.zeros(predicted_vals.shape[1] - i - 1)
         merged_array = np.concatenate((front, predicted_vals[:, i], back), axis=0)
         print(merged_array.shape)
-        pred_lines.append(merged_array[:period])
+        pred_lines.append(merged_array[start:end])
 
         
     # Create directory if it doesn't exist
@@ -543,7 +635,7 @@ def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, 
     plt.figure(figsize=(16, 8))
     
     # Plot observed values
-    x_values = np.arange(len(real_vals))
+    x_values = np.arange(start, end)
     plt.plot(x_values, real_vals, 'k-', linewidth=1, label='Observed', alpha=0.8)
     
     # Plot each prediction line with different colors
@@ -572,13 +664,154 @@ def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, 
     plt.tight_layout()
     
     # Save the figure
-    filename = f'step_pred_vs_observed_{modelname}_period{period}_basin{basin_id}_pred{len(pred_lines)}'
-    if basin_id is not None:
-        filename += f'_basin_{basin_id}'
+    filename = f'step_pred_vs_observed_{modelname}_period{start}to{end}_pred{len(pred_lines)}_basin{basin_id}'
     plt.savefig(f'{save_dir}/{filename}.png', dpi=300, bbox_inches='tight')
     
     print(f"Multi-step prediction plot saved to {save_dir}/{filename}.png")
     plt.close()
 
     return pred_lines
+
+def plot_detailed_prediction_results_multistep(real_vals, predicted_vals, basin_id, modelname, save_dir='plots/performance/'):
     
+    # 确保保存目录存在
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # 设置图表风格
+    sns.set_style("whitegrid")
+    plt.rcParams.update({'font.size': 14})
+    
+    # 将2D数组展平为1D用于部分分析
+    all_real = real_vals.flatten()
+    all_pred = predicted_vals.flatten()
+    
+    # 过滤有效值
+    valid_indices = (all_real >= 0) & (~np.isnan(all_real)) & (~np.isnan(all_pred))
+    valid_real = all_real[valid_indices]
+    valid_pred = all_pred[valid_indices]
+    
+    from datasets.postprocessing import calculate_metrics_for_flow_category
+    
+    
+    # ========== 图2: 多步散点图与1:1线 ==========
+    plt.figure(figsize=(12, 10))
+    
+    max_val = max(np.max(real_vals), np.max(predicted_vals)) * 1.1
+    min_val = min(np.min(real_vals), np.min(predicted_vals)) * 0.9
+    min_val = max(0, min_val)  # 确保非负
+    
+    # 定义颜色分组
+    n_steps = real_vals.shape[1]
+    colors = ['red', 'orange', 'green', 'blue']
+    color_labels = ['Early (1-3h)', 'Mid (4-6h)', 'Late (7-9h)', 'Long (10-12h)']
+    steps_per_group = max(1, n_steps // 4)
+    
+    # 按组绘制散点
+    for group_idx in range(4):
+        start_step = group_idx * steps_per_group
+        end_step = min((group_idx + 1) * steps_per_group, n_steps)
+        
+        if start_step < n_steps:
+            # 获取该组的所有数据点
+            group_real = real_vals[:, start_step:end_step].flatten()
+            group_pred = predicted_vals[:, start_step:end_step].flatten()
+            
+            # 过滤有效值
+            valid_mask = (group_real >= 0) & (~np.isnan(group_real)) & (~np.isnan(group_pred))
+            group_real = group_real[valid_mask]
+            group_pred = group_pred[valid_mask]
+            
+            if len(group_real) > 0:
+                plt.scatter(group_real, group_pred, c=colors[group_idx], 
+                           alpha=0.6, s=30, 
+                           label=f'{color_labels[group_idx]} (steps {start_step+1}-{end_step})')
+    
+    # 画1:1线
+    plt.plot([min_val, max_val], [min_val, max_val], 'k--', linewidth=3, 
+             alpha=0.8, label='Perfect prediction')
+    
+    # 添加整体回归线
+    if len(valid_real) > 0:
+        z = np.polyfit(valid_real, valid_pred, 1)
+        p = np.poly1d(z)
+        plt.plot(np.sort(valid_real), p(np.sort(valid_real)), 'gray', linewidth=3, 
+                 alpha=0.8, label=f'Overall: y={z[0]:.3f}x+{z[1]:.3f}')
+    
+    plt.xlim(min_val, max_val)
+    plt.ylim(min_val, max_val)
+    plt.title(f'Basin {basin_id}: Multi-step Prediction Scatter Plot', fontsize=18, fontweight='bold')
+    plt.xlabel('Observed Flow', fontsize=14)
+    plt.ylabel('Predicted Flow', fontsize=14)
+    plt.legend(fontsize=12, loc='upper left')
+    plt.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(f'{save_dir}/01_multistep_scatter_{modelname}_basin_{basin_id}.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # ========== 图2: 残差分析图 ==========
+    plt.figure(figsize=(12, 8))
+    
+    residuals = valid_pred - valid_real
+    plt.scatter(valid_real, residuals, c='red', alpha=0.6, s=25)
+    plt.axhline(y=0, color='black', linestyle='-', linewidth=2)
+    plt.title(f'Basin {basin_id}: Residuals Analysis', fontsize=18, fontweight='bold')
+    plt.xlabel('Observed Flow', fontsize=14)
+    plt.ylabel('Residuals (Predicted - Observed)', fontsize=14)
+    plt.grid(True, alpha=0.3)
+    
+    # 添加残差均值和标准差
+    residual_mean = np.mean(residuals)
+    residual_std = np.std(residuals)
+    plt.axhline(y=residual_mean, color='blue', linestyle='--', linewidth=2, 
+                label=f'Mean: {residual_mean:.3f}')
+    plt.axhline(y=residual_mean + 2*residual_std, color='green', linestyle='--', linewidth=2,
+                label=f'+2σ: {residual_mean + 2*residual_std:.3f}')
+    plt.axhline(y=residual_mean - 2*residual_std, color='green', linestyle='--', linewidth=2,
+                label=f'-2σ: {residual_mean - 2*residual_std:.3f}')
+    
+    plt.text(0.03, 0.97, f'Mean: {residual_mean:.3f}\nStd: {residual_std:.3f}', 
+             transform=plt.gca().transAxes, fontsize=14, verticalalignment='top', 
+             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    plt.legend(fontsize=12)
+    plt.tight_layout()
+    plt.savefig(f'{save_dir}/02_residuals_{modelname}_basin_{basin_id}.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    # ========== 图3: 分位数-分位数图 (QQ图) ==========
+    plt.figure(figsize=(10, 10))
+    
+    sorted_real = np.sort(valid_real)
+    sorted_pred = np.sort(valid_pred)
+    
+    # 如果长度不同，进行插值以匹配长度
+    if len(sorted_real) != len(sorted_pred):
+        indices = np.linspace(0, len(sorted_pred)-1, len(sorted_real)).astype(int)
+        sorted_pred = sorted_pred[indices]
+    
+    plt.scatter(sorted_real, sorted_pred, c='purple', alpha=0.6, s=25)
+    plt.plot([min_val, max_val], [min_val, max_val], 'k--', linewidth=3, alpha=0.8,
+             label='Perfect match')
+    plt.title(f'Basin {basin_id}: Quantile-Quantile Plot', fontsize=18, fontweight='bold')
+    plt.xlabel('Observed Flow Quantiles', fontsize=14)
+    plt.ylabel('Predicted Flow Quantiles', fontsize=14)
+    plt.grid(True, alpha=0.3)
+    plt.legend(fontsize=12)
+    
+    # 修正后的分布相似性指标
+    diagonal_deviation = np.mean(np.abs(sorted_pred - sorted_real))
+    max_possible_dev = np.max(sorted_real) - np.min(sorted_real)
+    distribution_similarity = 1 - (diagonal_deviation / max_possible_dev) if max_possible_dev > 0 else 1
+    sorted_correlation = np.corrcoef(sorted_real, sorted_pred)[0, 1]
+    
+    plt.text(0.03, 0.97, f'Distribution Match: {distribution_similarity:.3f}\nSorted Data R: {sorted_correlation:.3f}', 
+             transform=plt.gca().transAxes, fontsize=14, verticalalignment='top', 
+             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    plt.tight_layout()
+    plt.savefig(f'{save_dir}/03_qq_plot_{modelname}_basin_{basin_id}.png', dpi=300, bbox_inches='tight')
+    plt.close()
+    
+
+    return None
