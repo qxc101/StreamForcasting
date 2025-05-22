@@ -609,22 +609,30 @@ def plot_kge_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1,
     return ts_kge
 
 def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, modelname='FutureTST', save_dir='plots/performance/', start=None, end=None):
+    total_step = real_vals.shape[0]
+    n_pred = real_vals.shape[1]
     if start is None and end is None:
         print("Both start and end are None, using default values.")
         start = 0
-        end = real_vals.shape[0] + 11
+        end = total_step-n_pred
     elif start is None:
         start = 0
     elif end is None:
-        end = real_vals.shape[0] + 11
+        end = real_vals.shape[0]
+
+
     pred_lines = []
-    real_vals = np.concatenate((real_vals[:, 0], real_vals[-1, 1:]), axis=0)[start:end]
-    print(real_vals.shape)
-    for i in range(predicted_vals.shape[1]):
-        front = np.zeros(i)
-        back = np.zeros(predicted_vals.shape[1] - i - 1)
-        merged_array = np.concatenate((front, predicted_vals[:, i], back), axis=0)
-        print(merged_array.shape)
+    real_vals = real_vals[:total_step-n_pred, -1]
+    real_vals = real_vals[start:end]
+    for i in range(n_pred):
+        # if i != 0 and i != 6 and i != n_pred-1:
+        #     pred_lines.append(np.zeros(real_vals.shape))
+        #     continue
+        
+        # front = np.zeros(i)
+        # back = np.zeros(n_pred - i - 1)
+        # merged_array = np.concatenate((front, predicted_vals[:, i], back), axis=0)
+        merged_array = predicted_vals[n_pred-i-1:total_step-i, i]
         pred_lines.append(merged_array[start:end])
 
         
@@ -641,7 +649,7 @@ def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, 
     # Plot each prediction line with different colors
     colors = plt.cm.viridis(np.linspace(0, 0.8, len(pred_lines)))
     for i, pred_line in enumerate(pred_lines):
-        # Only plot the section that has predictions (not the padding)
+
         plt.plot(x_values, pred_line, 
                 color=colors[i], linestyle='--', linewidth=1, 
                 label=f'{i+1}-step ahead', alpha=0.7)

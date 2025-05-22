@@ -26,7 +26,7 @@ from models.futureTST import FutureTST
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-def training(epochs, loss_function, optimizer, model, train_dataloader, val_dataloader, path):
+def training(epochs, loss_function, optimizer, model, train_dataloader, val_dataloader, path, patience=5):
     train_loss_vals = []
     val_loss_vals = []
     best_val_loss = float('inf')
@@ -39,18 +39,6 @@ def training(epochs, loss_function, optimizer, model, train_dataloader, val_data
 
         for batch in train_bar:
             optimizer.zero_grad()
-            # (Pdb) batch[0, -1, model.context_window_size:]
-            # tensor([41.0003, 41.0003, 41.0003, 41.0003, 42.0245, 43.0133, 43.0133, 43.0133,
-            #         41.0003, 38.9874, 38.4930, 37.9986])
-            # (Pdb) batch[0, 0, model.context_window_size:]
-            # tensor([1961.1799, 1961.1799, 1961.1799, 1961.1799, 1961.1851, 1961.1899,
-            #         1961.1899, 1961.1899, 1961.1801, 1961.1700, 1961.1650, 1961.1600])
-            # (Pdb) batch[0, 1, model.context_window_size:]
-            # tensor([0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.])
-            # (Pdb) batch[0, 2, model.context_window_size:]
-            # tensor([41.0003, 41.0003, 41.0003, 41.0003, 42.0245, 43.0133, 43.0133, 43.0133,
-            #         41.0003, 38.9874, 38.4930, 37.9986])
-            # (Pdb) batch[0, 2, model.context_window_size:]
 
             valid_indices = []
             for i in range(batch.shape[0]):
@@ -118,8 +106,15 @@ def training(epochs, loss_function, optimizer, model, train_dataloader, val_data
             best_val_loss = val_loss
             best_epoch = epoch + 1
             best_nse = epoch_NSE
+            print(f"Best model found at epoch {best_epoch} with val loss: {best_val_loss:.6f} and NSE: {epoch_NSE:.6f}")
             torch.save(model.state_dict(), path)
-
+            wait = 0                              # reset patience counter
+        else:
+            wait += 1
+            if wait >= patience:
+                print(f"Early stopping at epoch {epoch+1} (best val = {best_val_loss:.6f})")
+                
+                break
         print(f'Epoch {epoch+1} | Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f} | NSE: {epoch_NSE:.6f}')
     return model
 
@@ -158,21 +153,22 @@ if __name__ == "__main__":
     # Add command line argument parsing
     parser = argparse.ArgumentParser(description='Train and evaluate FutureTST model for stream forecasting')
     parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training, validation, and testing')
-    parser.add_argument('--time_series_size', type=int, default=24, help='Size of the time series context window')
+    parser.add_argument('--time_series_size', type=int, default=48, help='Size of the time series context window')
     parser.add_argument('--pred_size', type=int, default=12, help='Size of the prediction window')
     parser.add_argument('--num_channels', type=int, default=3, help='Number of input channels')
     parser.add_argument('--model_path', type=str, default='results/FutureTST_hourly_best.pth', 
                         help='Path to save/load the model')
-    parser.add_argument('--patch_size', type=int, default=32, help='Size of patches for the model')
-    parser.add_argument('--stride_len', type=int, default=8, help='Stride length for patching')
-    parser.add_argument('--d_model', type=int, default=256, help='Model dimension')
-    parser.add_argument('--num_transformer_layers', type=int, default=2, help='Number of transformer layers')
-    parser.add_argument('--mlp_size', type=int, default=128, help='Size of MLP layer')
+    parser.add_argument('--patch_size', type=int, default=64, help='Size of patches for the model')
+    parser.add_argument('--stride_len', type=int, default=16, help='Stride length for patching')
+    parser.add_argument('--d_model', type=int, default=128, help='Model dimension')
+    parser.add_argument('--num_transformer_layers', type=int, default=8, help='Number of transformer layers')
+    parser.add_argument('--mlp_size', type=int, default=64, help='Size of MLP layer')
     parser.add_argument('--num_heads', type=int, default=8, help='Number of attention heads')
     parser.add_argument('--mlp_dropout', type=float, default=0.1, help='Dropout rate for MLP')
-    parser.add_argument('--embedding_dropout', type=float, default=0.1, help='Dropout rate for embeddings')
+    parser.add_argument('--embedding_dropout', type=float, default=0, help='Dropout rate for embeddings')
     parser.add_argument('--decay', '-dc', action='store_true', default=False, help='If we are investigating decay rate')
     parser.add_argument('--eval_only', '-eo', action='store_true', default=False, help='If we are only evaluating the model')
+    parser.add_argument('--epoch', type=int, default=25, help='training epochs')
     args = parser.parse_args()
     
     x = pd.read_csv("datasets/SMFV2_Data_withbasin.csv",index_col=0)
@@ -208,7 +204,7 @@ if __name__ == "__main__":
             pred_size = decay_pred_size
             print(f"Prediction size: {pred_size}, time series size: {time_series_size}")
             num_channels = args.num_channels
-            path = model_path
+            model_path
             
             print(certain_basins.shape)
             train_dataloader,val_dataloader,test_dataloader = data_creation(basin,time_series_size,pred_size,batch_size,batch_size,batch_size) 
@@ -230,21 +226,20 @@ if __name__ == "__main__":
             optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
             if args.eval_only == False:
-                model = training(20,loss_function,optimizer,model,train_dataloader,val_dataloader,path)
+                model = training(args.epoch,loss_function,optimizer,model,train_dataloader,val_dataloader,model_path)
 
 
             # Load best model
 
-            checkpoint = torch.load(path, map_location=torch.device('cpu'))
+            checkpoint = torch.load(model_path)
             model.load_state_dict(checkpoint)
             model.to(device)
-            print(f"Model loaded from {path}")
+            print(f"Model loaded from {model_path}")
 
 
 
             # Evaluate model
             predicted_vals, real_vals = evaluation(model, test_dataloader)
-
 
             # # visualization
             plot_prediction_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
@@ -260,7 +255,7 @@ if __name__ == "__main__":
 
             ts_nse = plot_nse_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
             ts_kge = plot_kge_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
-            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=600, end=800)
+           
             plot_detailed_prediction_results_multistep(real_vals, predicted_vals, basin_id, modelname='FutureTST')
 
 
@@ -269,6 +264,10 @@ if __name__ == "__main__":
             metrics_high = calculate_metrics_for_flow_category(real_vals, predicted_vals, (None, 90))
             metrics_low = calculate_metrics_for_flow_category(real_vals, predicted_vals, (10, None))
             
+            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=None)
+            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=2160)
+            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=720)
+            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=600, end=800)
 
             results.append(metrics_all)
             results_high.append(metrics_high)

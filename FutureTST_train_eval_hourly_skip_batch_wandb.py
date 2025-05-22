@@ -167,17 +167,17 @@ SWEEP_DICT = {
     "method": "bayes",
     "metric": {"name": "val_loss", "goal": "minimize"},
     "parameters": {
-        "context_window_size": {"values": [24, 48, 72]},
+        "context_window_size": {"values": [48, 72, 96, 120, 144]},
         "patch_size": {"values": [16, 32, 64]},
         "stride_len": {"values": [4, 8, 16]},
         "d_model": {"values": [128, 256, 512]},
         "num_transformer_layers": {"values": [2, 8]},
         "mlp_size": {"values": [64, 128, 256]},
-        "num_heads": {"values": [2, 8, 16]},
-        "mlp_dropout": {"values": [0.0, 0.1, 0.2]},
-        "embedding_dropout": {"values": [0.0, 0.1, 0.2]},
+        "num_heads": {"values": [8, 16]},
+        "mlp_dropout": {"values": [0.0, 0.1]},
+        "embedding_dropout": {"values": [0.0, 0.1]},
         "lr": {"values": [1e-3, 1e-4]},
-        "batch_size": {"values": [256]},
+        "batch_size": {"values": [512]},
         "epochs": {"value": 50},         # maximum length
         "patience": {"value": 5},        # Early Stopping patience
         "pred_size": {"value": 12},
@@ -190,7 +190,8 @@ if __name__ == "__main__":
     ap.add_argument("--project", default="FutureTST_sweep", help="wandb project name")
     ap.add_argument("--count", type=int, default=100, help="number of sweep trials")
     args = ap.parse_args()
-
-    sweep_id = wandb.sweep(SWEEP_DICT, project=args.project)
-    print(f"Created sweep {sweep_id}")
-    wandb.agent(sweep_id, function=sweep_train, count=args.count)
+    for p in [24, 48]:
+        SWEEP_DICT["parameters"]["pred_size"]["value"] = p
+        sweep_id = wandb.sweep(SWEEP_DICT, project=args.project)
+        print(f"Created sweep {sweep_id}")
+        wandb.agent(sweep_id, function=sweep_train, count=args.count)
