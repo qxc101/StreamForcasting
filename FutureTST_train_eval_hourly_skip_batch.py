@@ -19,14 +19,15 @@ from datasets.postprocessing import (
     plot_nse_of_pred_time_step,
     plot_ob_vs_pred_time_step,
     plot_kge_of_pred_time_step,
-    plot_detailed_prediction_results_multistep
+    plot_detailed_prediction_results_multistep,
+    plot_r2_of_pred_time_step
     )
 from models.futureTST import FutureTST
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-def training(epochs, loss_function, optimizer, model, train_dataloader, val_dataloader, path, patience=5):
+def training(epochs, loss_function, optimizer, model, train_dataloader, val_dataloader, path, patience=20):
     train_loss_vals = []
     val_loss_vals = []
     best_val_loss = float('inf')
@@ -152,23 +153,23 @@ def evaluation(model, test_dataloader):
 if __name__ == "__main__":
     # Add command line argument parsing
     parser = argparse.ArgumentParser(description='Train and evaluate FutureTST model for stream forecasting')
-    parser.add_argument('--batch_size', type=int, default=256, help='Batch size for training, validation, and testing')
-    parser.add_argument('--time_series_size', type=int, default=48, help='Size of the time series context window')
+    parser.add_argument('--batch_size', type=int, default=512, help='Batch size for training, validation, and testing')
+    parser.add_argument('--time_series_size', type=int, default=72, help='Size of the time series context window')
     parser.add_argument('--pred_size', type=int, default=12, help='Size of the prediction window')
     parser.add_argument('--num_channels', type=int, default=3, help='Number of input channels')
     parser.add_argument('--model_path', type=str, default='results/FutureTST_hourly_best.pth', 
                         help='Path to save/load the model')
-    parser.add_argument('--patch_size', type=int, default=64, help='Size of patches for the model')
+    parser.add_argument('--patch_size', type=int, default=32, help='Size of patches for the model')
     parser.add_argument('--stride_len', type=int, default=16, help='Stride length for patching')
     parser.add_argument('--d_model', type=int, default=128, help='Model dimension')
     parser.add_argument('--num_transformer_layers', type=int, default=8, help='Number of transformer layers')
-    parser.add_argument('--mlp_size', type=int, default=64, help='Size of MLP layer')
-    parser.add_argument('--num_heads', type=int, default=8, help='Number of attention heads')
+    parser.add_argument('--mlp_size', type=int, default=128, help='Size of MLP layer')
+    parser.add_argument('--num_heads', type=int, default=16, help='Number of attention heads')
     parser.add_argument('--mlp_dropout', type=float, default=0.1, help='Dropout rate for MLP')
     parser.add_argument('--embedding_dropout', type=float, default=0, help='Dropout rate for embeddings')
     parser.add_argument('--decay', '-dc', action='store_true', default=False, help='If we are investigating decay rate')
     parser.add_argument('--eval_only', '-eo', action='store_true', default=False, help='If we are only evaluating the model')
-    parser.add_argument('--epoch', type=int, default=25, help='training epochs')
+    parser.add_argument('--epoch', type=int, default=50, help='training epochs')
     args = parser.parse_args()
     
     x = pd.read_csv("datasets/SMFV2_Data_withbasin.csv",index_col=0)
@@ -204,7 +205,6 @@ if __name__ == "__main__":
             pred_size = decay_pred_size
             print(f"Prediction size: {pred_size}, time series size: {time_series_size}")
             num_channels = args.num_channels
-            model_path
             
             print(certain_basins.shape)
             train_dataloader,val_dataloader,test_dataloader = data_creation(basin,time_series_size,pred_size,batch_size,batch_size,batch_size) 
@@ -222,7 +222,7 @@ if __name__ == "__main__":
                         embedding_dropout=args.embedding_dropout,
                         input_channels=num_channels)
 
-            loss_function = torch.nn.MSELoss()
+            loss_function = torch.nn.MSELoss(reduction='none')
             optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
             if args.eval_only == False:
@@ -255,7 +255,7 @@ if __name__ == "__main__":
 
             ts_nse = plot_nse_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
             ts_kge = plot_kge_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
-           
+            ts_r2 = plot_r2_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
             plot_detailed_prediction_results_multistep(real_vals, predicted_vals, basin_id, modelname='FutureTST')
 
 
@@ -267,7 +267,7 @@ if __name__ == "__main__":
             plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=None)
             plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=2160)
             plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=720)
-            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=600, end=800)
+            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=550, end=700)
 
             results.append(metrics_all)
             results_high.append(metrics_high)

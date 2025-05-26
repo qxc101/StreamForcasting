@@ -436,6 +436,92 @@ def calculate_metrics_for_flow_category(real_vals, predicted_vals, percentile=No
     
     return (kge, nse_val, mse, rmse)
 
+def plot_r2_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, modelname='FutureTST', save_dir='plots/performance/'):
+    """
+    Calculate R2 for each prediction time step and plot results.
+    
+    Args:
+        real_vals: Numpy array of real values
+        predicted_vals: Numpy array of predicted values
+        plot: Whether to generate a plot (default True)
+        basin_id: Basin ID for plot title (optional)
+        modelname: Model name for file naming (default 'model')
+        save_dir: Directory to save the plot (default 'plots/r2_timesteps')
+    
+    Returns:
+        ts_r2: Numpy array of R2 values for each time step
+    """
+    ts_r2 = np.zeros(real_vals.shape[1])
+    for ts in range(real_vals.shape[1]):
+        real_vals_selected_ts = real_vals[:, ts]
+        predicted_vals_selected_ts = predicted_vals[:, ts]
+        ss_total = np.sum((real_vals_selected_ts - np.mean(real_vals_selected_ts))**2)
+        ss_residual = np.sum((real_vals_selected_ts - predicted_vals_selected_ts)**2)
+        r2_val = 1 - (ss_residual / ss_total)
+        ts_r2[ts] = r2_val
+    
+    # Create bar chart for R2 values
+    if plot:
+        os.makedirs(save_dir, exist_ok=True)
+        
+        plt.figure(figsize=(12, 6))
+        
+        # Create x-axis labels (hours ahead)
+        horizons = np.arange(1, len(ts_r2) + 1)
+        
+        # Plot the R2 values as bars
+        bars = plt.bar(horizons, ts_r2, color='b', alpha=0.7)
+        
+        # Add a horizontal line at R2 = 0 (baseline)
+        plt.axhline(y=0, color='gray', linestyle='--', alpha=0.7)
+        
+        # Add value labels above/below each bar
+        for i, bar in enumerate(bars):
+            height = bar.get_height()
+            if ts_r2[i] >= 0:
+                y_pos = ts_r2[i] + 0.02
+                va = 'bottom'
+            else:
+                y_pos = ts_r2[i] - 0.06
+                va = 'top'
+            plt.text(bar.get_x() + bar.get_width()/2., y_pos,
+                    f'{ts_r2[i]:.3f}', ha='center', va=va, 
+                    fontsize=9, rotation=90)
+        
+        # Add title and labels
+        title = f'R2 by Prediction Time Step'
+        if basin_id is not None:
+            title = f'Basin {basin_id}: {title}'
+        plt.title(title, fontsize=14)
+        plt.xlabel('Prediction Time Step (Hours Ahead)', fontsize=12)
+        plt.ylabel('Nash-Sutcliffe Efficiency (R2)', fontsize=12)
+        
+        # Set y-axis limits to make the plot look better
+        plt.ylim(0, 1.5)
+        
+        # Add grid for better readability
+        plt.grid(axis='y', linestyle='--', alpha=0.4)
+        
+        # Add average R2 reference line
+        avg_r2 = np.mean(ts_r2)
+        plt.axhline(y=avg_r2, color='red', linestyle='-', alpha=0.7)
+        plt.text(horizons[-1] * 0.98, avg_r2 * 1.05, f'Avg R2: {avg_r2:.3f}', 
+                 ha='right', va='bottom', color='red', fontweight='bold',
+                 bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="red", alpha=0.8))
+        
+        # Ensure a tight layout
+        plt.tight_layout()
+        
+        # Save the figure
+        filename = f'r2_timesteps_{modelname}_basin{basin_id}_pred{len(ts_r2)}_basin{basin_id}'
+
+        plt.savefig(f'{save_dir}/{filename}.png', dpi=300, bbox_inches='tight')
+        
+        print(f"R2 by time step plot saved to {save_dir}/{filename}.png")
+        plt.close()
+    
+    return ts_r2
+
 def plot_nse_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, modelname='FutureTST', save_dir='plots/performance/'):
     """
     Calculate NSE for each prediction time step and plot results.
@@ -496,7 +582,7 @@ def plot_nse_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1,
         plt.ylabel('Nash-Sutcliffe Efficiency (NSE)', fontsize=12)
         
         # Set y-axis limits to make the plot look better
-        plt.ylim(0, 1)
+        plt.ylim(0, 1.5)
         
         # Add grid for better readability
         plt.grid(axis='y', linestyle='--', alpha=0.4)
@@ -584,7 +670,7 @@ def plot_kge_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1,
         plt.ylabel('KGE', fontsize=12)
         
         # Set y-axis limits to make the plot look better
-        plt.ylim(0, 1)
+        plt.ylim(0, 1.5)
         
         # Add grid for better readability
         plt.grid(axis='y', linestyle='--', alpha=0.4)
@@ -592,7 +678,7 @@ def plot_kge_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1,
         # Add average NSE reference line
         avg_nse = np.mean(ts_kge)
         plt.axhline(y=avg_nse, color='red', linestyle='-', alpha=0.7)
-        plt.text(horizons[-1] * 0.98, avg_nse * 1.05, f'Avg NSE: {avg_nse:.3f}', 
+        plt.text(horizons[-1] * 0.98, avg_nse * 1.05, f'Avg KGE: {avg_nse:.3f}', 
                  ha='right', va='bottom', color='red', fontweight='bold',
                  bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="red", alpha=0.8))
         
