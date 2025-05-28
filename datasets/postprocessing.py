@@ -6,54 +6,56 @@ from permetrics.regression import RegressionMetric
 
 
 
-def calculate_metrics_for_flow_category(real_vals, predicted_vals, percentile=None):
-    """
-    Calculate regression metrics for different flow categories.
+# def calculate_metrics_for_flow_category(real_vals, predicted_vals, percentile=None):
+#     """
+#     Calculate regression metrics for different flow categories.
     
-    Args:
-        real_vals: Numpy array of ground truth values
-        predicted_vals: Numpy array of predicted values
-        percentile: Tuple (low, high) defining flow category, e.g., (None, 90) for high flows
-                   or (10, None) for low flows. None means all flows.
+#     Args:
+#         real_vals: Numpy array of ground truth values
+#         predicted_vals: Numpy array of predicted values
+#         percentile: Tuple (low, high) defining flow category, e.g., (None, 90) for high flows
+#                    or (10, None) for low flows. None means all flows.
     
-    Returns:
-        Tuple of (KGE, NSE, MSE) metrics
-    """
-    # Filter for valid values
-    valid_indices = (real_vals >= 0) & (~np.isnan(real_vals)) & (~np.isnan(predicted_vals))
-    real_vals = real_vals[valid_indices]
-    predicted_vals = predicted_vals[valid_indices]
-    
-    # Apply percentile filtering if specified
-    if percentile:
-        low_pct, high_pct = percentile
-        if low_pct is not None and high_pct is not None:
-            # Middle range
-            low_threshold = np.percentile(real_vals, low_pct)
-            high_threshold = np.percentile(real_vals, high_pct)
-            indices = (real_vals >= low_threshold) & (real_vals <= high_threshold)
-        elif low_pct is not None:
-            # Low flows
-            threshold = np.percentile(real_vals, low_pct)
-            indices = real_vals <= threshold
-            predicted_vals = np.maximum(predicted_vals, 0)  # Ensure non-negative predictions
-        elif high_pct is not None:
-            # High flows
-            threshold = np.percentile(real_vals, high_pct)
-            indices = real_vals >= threshold
+#     Returns:
+#         Tuple of (KGE, NSE, MSE) metrics
+#     """
+#     # Filter for valid values
+#     valid_indices = (real_vals >= 0) & (~np.isnan(real_vals)) & (~np.isnan(predicted_vals))
+#     real_vals = real_vals[valid_indices]
+#     predicted_vals = predicted_vals[valid_indices]
+#     print(f"percentile {percentile} real_vals {real_vals.shape} predicted_vals {predicted_vals.shape}")
+#     # Apply percentile filtering if specified
+#     if percentile:
+#         low_pct, high_pct = percentile
+#         if low_pct is not None and high_pct is not None:
+#             # Middle range
+#             low_threshold = np.percentile(real_vals, low_pct)
+#             high_threshold = np.percentile(real_vals, high_pct)
+#             indices = (real_vals >= low_threshold) & (real_vals <= high_threshold)
+#         elif low_pct is not None:
+#             # Low flows
+#             threshold = np.percentile(real_vals, low_pct)
+#             indices = real_vals <= threshold
+#             predicted_vals = np.maximum(predicted_vals, 0)  # Ensure non-negative predictions
+#             print(threshold)
+#         elif high_pct is not None:
+#             # High flows
+#             threshold = np.percentile(real_vals, high_pct)
+#             indices = real_vals >= threshold
+#             print(f"high flow threshold {threshold}")
         
-        real_vals = real_vals[indices]
-        predicted_vals = predicted_vals[indices]
+#         real_vals = real_vals[indices]
+#         predicted_vals = predicted_vals[indices]
     
-    # Calculate metrics
-    evaluator = RegressionMetric(real_vals, predicted_vals)
-    mse = evaluator.mean_squared_error()
-    rmse = np.sqrt(mse)  # Calculate RMSE from MSE
+#     # Calculate metrics
+#     evaluator = RegressionMetric(real_vals, predicted_vals)
+#     mse = evaluator.mean_squared_error()
+#     rmse = np.sqrt(mse)  # Calculate RMSE from MSE
 
-    return (evaluator.kling_gupta_efficiency(), 
-            evaluator.nash_sutcliffe_efficiency(), 
-            mse,
-            rmse)
+#     return (evaluator.kling_gupta_efficiency(), 
+#             evaluator.nash_sutcliffe_efficiency(), 
+#             mse,
+            # rmse)
 
 
 
@@ -416,7 +418,7 @@ def calculate_metrics_for_flow_category(real_vals, predicted_vals, percentile=No
             # High flows
             threshold = np.percentile(real_vals, high_pct)
             indices = real_vals >= threshold
-        
+            print(f"high flow threshold {threshold}")
         real_vals = real_vals[indices]
         predicted_vals = predicted_vals[indices]
     
@@ -694,7 +696,8 @@ def plot_kge_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1,
     
     return ts_kge
 
-def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, modelname='FutureTST', save_dir='plots/performance/', start=None, end=None):
+def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, modelname='FutureTST', save_dir='plots/performance/', start=None, end=None, plot_selected_steps=False):
+    # predicted_vals = real_vals
     total_step = real_vals.shape[0]
     n_pred = real_vals.shape[1]
     if start is None and end is None:
@@ -708,16 +711,10 @@ def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, 
 
 
     pred_lines = []
+    
     real_vals = real_vals[:total_step-n_pred, -1]
     real_vals = real_vals[start:end]
     for i in range(n_pred):
-        # if i != 0 and i != 6 and i != n_pred-1:
-        #     pred_lines.append(np.zeros(real_vals.shape))
-        #     continue
-        
-        # front = np.zeros(i)
-        # back = np.zeros(n_pred - i - 1)
-        # merged_array = np.concatenate((front, predicted_vals[:, i], back), axis=0)
         merged_array = predicted_vals[n_pred-i-1:total_step-i, i]
         pred_lines.append(merged_array[start:end])
 
@@ -732,10 +729,13 @@ def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, 
     x_values = np.arange(start, end)
     plt.plot(x_values, real_vals, 'k-', linewidth=1, label='Observed', alpha=0.8)
     
-    # Plot each prediction line with different colors
+    # selected_steps = np.array([1, 6, 12, 18, 24])
+    selected_steps = np.array([])
     colors = plt.cm.viridis(np.linspace(0, 0.8, len(pred_lines)))
     for i, pred_line in enumerate(pred_lines):
-
+        if plot_selected_steps:
+            if i not in selected_steps - 1:
+                continue
         plt.plot(x_values, pred_line, 
                 color=colors[i], linestyle='--', linewidth=1, 
                 label=f'{i+1}-step ahead', alpha=0.7)

@@ -42,6 +42,7 @@ def training(epochs, patience, loss_fn, optim, model, train_loader, val_loader):
             y_pred = model(batch.float().to(DEVICE)).squeeze(1)
             loss = loss_fn(y_pred, y_true)
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
             optim.step()
             tr_loss += loss.item()
             wandb.log({"train_loss": loss.item()}, commit=False)
@@ -71,11 +72,10 @@ def training(epochs, patience, loss_fn, optim, model, train_loader, val_loader):
                 val_loss += loss.item()
                 outs.append(y_pred.cpu().numpy())
                 reals.append(y_true.cpu().numpy())
-        val_loss /= len(val_loader)
-        outs, reals = np.concatenate(outs), np.concatenate(reals)
-        val_nse = nse(outs, reals)
-
-        wandb.log({"val_loss": val_loss, "val_NSE": val_nse})
+            val_loss /= len(val_loader)
+            outs, reals = np.concatenate(outs), np.concatenate(reals)
+            val_nse = nse(outs, reals)
+            wandb.log({"val_loss": val_loss, "val_NSE": val_nse})
 
         # ----- EARLY STOP LOGIC --------------------------------------
         if val_loss < best_val:

@@ -27,12 +27,13 @@ from models.futureTST import FutureTST
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {device}")
 
-def training(epochs, loss_function, optimizer, model, train_dataloader, val_dataloader, path, patience=20):
+def training(epochs, loss_function, optimizer, model, train_dataloader, val_dataloader, path, patience=100):
     train_loss_vals = []
     val_loss_vals = []
     best_val_loss = float('inf')
     model.to(device)
     best_model = None
+    wait = 0  
     for epoch in range(epochs):
         model.train()
         total_train_loss = 0
@@ -109,7 +110,7 @@ def training(epochs, loss_function, optimizer, model, train_dataloader, val_data
             best_nse = epoch_NSE
             print(f"Best model found at epoch {best_epoch} with val loss: {best_val_loss:.6f} and NSE: {epoch_NSE:.6f}")
             torch.save(model.state_dict(), path)
-            wait = 0                              # reset patience counter
+            wait = 0                              
         else:
             wait += 1
             if wait >= patience:
@@ -154,25 +155,34 @@ if __name__ == "__main__":
     # Add command line argument parsing
     parser = argparse.ArgumentParser(description='Train and evaluate FutureTST model for stream forecasting')
     parser.add_argument('--batch_size', type=int, default=512, help='Batch size for training, validation, and testing')
-    parser.add_argument('--time_series_size', type=int, default=72, help='Size of the time series context window')
-    parser.add_argument('--pred_size', type=int, default=12, help='Size of the prediction window')
+    parser.add_argument('--time_series_size', type=int, default=144, help='Size of the time series context window')
+    parser.add_argument('--pred_size', type=int, default=24, help='Size of the prediction window')
     parser.add_argument('--num_channels', type=int, default=3, help='Number of input channels')
-    parser.add_argument('--model_path', type=str, default='results/FutureTST_hourly_best.pth', 
+    parser.add_argument('--model_path', type=str, default='results/FutureTST_hourly_best_basin1_pred12_nse0837.pth', 
                         help='Path to save/load the model')
     parser.add_argument('--patch_size', type=int, default=32, help='Size of patches for the model')
     parser.add_argument('--stride_len', type=int, default=16, help='Stride length for patching')
     parser.add_argument('--d_model', type=int, default=128, help='Model dimension')
-    parser.add_argument('--num_transformer_layers', type=int, default=8, help='Number of transformer layers')
+    parser.add_argument('--num_transformer_layers', type=int, default=2, help='Number of transformer layers')
     parser.add_argument('--mlp_size', type=int, default=128, help='Size of MLP layer')
     parser.add_argument('--num_heads', type=int, default=16, help='Number of attention heads')
     parser.add_argument('--mlp_dropout', type=float, default=0.1, help='Dropout rate for MLP')
     parser.add_argument('--embedding_dropout', type=float, default=0, help='Dropout rate for embeddings')
     parser.add_argument('--decay', '-dc', action='store_true', default=False, help='If we are investigating decay rate')
     parser.add_argument('--eval_only', '-eo', action='store_true', default=False, help='If we are only evaluating the model')
+    parser.add_argument('--finetune', "-ft", action='store_true', default=False, help='If we doing fine-tuning')
+    parser.add_argument('--ft_model_path', type=str, default='results/FutureTST_hourly_best_basin1_pred12_nse0837.pth')
     parser.add_argument('--epoch', type=int, default=50, help='training epochs')
+    parser.add_argument('--sixhourly', "-sh", action='store_true', default=False, help='If we doing 6 hourly data')
     args = parser.parse_args()
     
-    x = pd.read_csv("datasets/SMFV2_Data_withbasin.csv",index_col=0)
+    if args.sixhourly:
+        print(f"Loading dataset from 'datasets/SMFV2_Data_withbasin_6hourly.csv'")
+        x = pd.read_csv("datasets/SMFV2_Data_withbasin_6hourly.csv", index_col=0)
+    else:
+        # Load the dataset
+        print(f"Loading dataset from 'datasets/SMFV2_Data_withbasin.csv'")
+        x = pd.read_csv("datasets/SMFV2_Data_withbasin.csv",index_col=0)
 
     ids = [1]
     if args.decay:
@@ -191,7 +201,10 @@ if __name__ == "__main__":
         locations = []
         for basin_id in ids:
             print(f"Processing basin {basin_id}")
-            model_path = f"results/FutureTST_hourly_best_basin{basin_id}_pred{decay_pred_size}.pth"
+            if args.sixhourly:
+                model_path = f"results/FutureTST_hourly_best_basin{basin_id}_pred{decay_pred_size}_6hourly.pth"
+            else:
+                model_path = f"results/FutureTST_hourly_best_basin{basin_id}_pred{decay_pred_size}.pth"
 
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             locations.append(basin_id)
@@ -222,53 +235,121 @@ if __name__ == "__main__":
                         embedding_dropout=args.embedding_dropout,
                         input_channels=num_channels)
 
-            loss_function = torch.nn.MSELoss(reduction='none')
+            loss_function = torch.nn.MSELoss()
             optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
 
-            if args.eval_only == False:
+            if args.eval_only == False and not args.finetune:
                 model = training(args.epoch,loss_function,optimizer,model,train_dataloader,val_dataloader,model_path)
+            if args.finetune:
+                ft_train_dataloader= data_creation(basin,time_series_size,pred_size,batch_size,batch_size,batch_size, ft_percentile=90) 
+
+                # Load the fine-tuning model
+                print(f"Loading fine-tuning model from {args.ft_model_path}")
+                checkpoint = torch.load(args.ft_model_path, map_location=device)
+                model.load_state_dict(checkpoint)
+
+                # Freeze specific layers in the FutureTST model
+                for name, param in model.named_parameters():
+                    if "normalizer" in name or "extract_patches" in name or "positional_encoding" in name:
+                        # Freeze normalizer, patch extraction, and positional encoding
+                        param.requires_grad = False
+                    elif "transformer.encoder.layers.0" in name or "transformer.encoder.layers.1" in name:
+                        # Freeze the first two layers of the transformer encoder
+                        param.requires_grad = False
+                    elif "transformer.decoder.layers.0" in name:
+                        # Freeze the first layer of the transformer decoder
+                        param.requires_grad = False
+                    else:
+                        # Keep other layers trainable
+                        param.requires_grad = True
+
+                # Verify which layers are frozen
+                print("Trainable parameters:")
+                for name, param in model.named_parameters():
+                    if param.requires_grad:
+                        print(f"  {name}")
+
+                model.to(device)
+                print("Fine-tuning model loaded successfully.")
+
+                loss_function = torch.nn.MSELoss()
+                optimizer = torch.optim.Adam(model.parameters(), lr=0.00001)
+                model_path = args.ft_model_path.replace('.pth', '_ft.pth')
+                model = training(25,loss_function,optimizer,model,ft_train_dataloader,val_dataloader,model_path)
 
 
             # Load best model
-
-            checkpoint = torch.load(model_path)
+            print("-"*100)
+            print("Starting evaluation...")
+            checkpoint = torch.load(model_path, map_location=device)
+            # checkpoint = torch.load("results/FutureTST_hourly_best_basin1_pred12_nse0837.pth")
             model.load_state_dict(checkpoint)
             model.to(device)
             print(f"Model loaded from {model_path}")
 
-
-
-            # Evaluate model
             predicted_vals, real_vals = evaluation(model, test_dataloader)
 
-            # # visualization
-            plot_prediction_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
-            
-            # # high_low_flow_comparison
-            plot_high_low_flow_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+            # Evaluate model
+            if args.sixhourly:
+                print(f"Evaluating model on test data with 6-hourly intervals")
+                
 
-            # # detailed
-            plot_detailed_prediction_results(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+                # # visualization
+                plot_prediction_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST', save_path='plots_6hourly/comparison')
+                
+                # # high_low_flow_comparison
+                plot_high_low_flow_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST', save_path='plots_6hourly/highlowcomparision')
 
-            # # flow_duration_curve
-            plot_flow_duration_curve(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+                # # detailed
+                plot_detailed_prediction_results(real_vals, predicted_vals, basin_id, modelname='FutureTST',save_dir ='plots_6hourly/detailed')
 
-            ts_nse = plot_nse_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
-            ts_kge = plot_kge_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
-            ts_r2 = plot_r2_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
-            plot_detailed_prediction_results_multistep(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+                # # flow_duration_curve
+                plot_flow_duration_curve(real_vals, predicted_vals, basin_id, modelname='FutureTST', save_dir='plots_6hourly/fdc')
 
+                ts_nse = plot_nse_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', save_dir='plots_6hourly/performance/')
+                ts_kge = plot_kge_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', save_dir='plots_6hourly/performance/')
+                ts_r2 = plot_r2_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', save_dir='plots_6hourly/performance/')
+                plot_detailed_prediction_results_multistep(real_vals, predicted_vals, basin_id, modelname='FutureTST', 
+                                                           save_dir='plots_6hourly/performance/')
+
+                plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=None, 
+                                          save_dir='plots_6hourly/performance/', plot_selected_steps=True)
+                plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=int(2160/6), 
+                                          save_dir='plots_6hourly/performance/')
+                plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=int(720/6), 
+                                          plot_selected_steps=True, 
+                                          save_dir='plots_6hourly/performance/')
+                plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=int(550/6), end=int(700/6), 
+                                          save_dir='plots_6hourly/performance/')
+
+            else:
+                # # visualization
+                plot_prediction_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+                
+                # # high_low_flow_comparison
+                plot_high_low_flow_comparison(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+
+                # # detailed
+                plot_detailed_prediction_results(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+
+                # # flow_duration_curve
+                plot_flow_duration_curve(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+
+                ts_nse = plot_nse_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
+                ts_kge = plot_kge_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
+                ts_r2 = plot_r2_of_pred_time_step(real_vals, predicted_vals, modelname='FutureTST')
+                plot_detailed_prediction_results_multistep(real_vals, predicted_vals, basin_id, modelname='FutureTST')
+
+                plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=None, plot_selected_steps=True)
+                plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=2160)
+                plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=720, plot_selected_steps=True)
+                plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=550, end=700)
 
             # Calculate metrics for different flow categories
             metrics_all = calculate_metrics_for_flow_category(real_vals, predicted_vals)
             metrics_high = calculate_metrics_for_flow_category(real_vals, predicted_vals, (None, 90))
             metrics_low = calculate_metrics_for_flow_category(real_vals, predicted_vals, (10, None))
             
-            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=None)
-            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=2160)
-            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=None, end=720)
-            plot_ob_vs_pred_time_step(real_vals, predicted_vals, modelname='FutureTST', start=550, end=700)
-
             results.append(metrics_all)
             results_high.append(metrics_high)
             results_low.append(metrics_low)
@@ -285,9 +366,14 @@ if __name__ == "__main__":
         one_day_low_results = pd.DataFrame(results_low, columns=['KGE', 'NSE', 'MSE', 'RMSE'], index=locations)
 
         # Save results to CSV
-        one_day_results.to_csv(f'results/futuretst_hourly_results_pred{decay_pred_size}.csv')
-        one_day_high_results.to_csv(f'results/futuretst_hourly_high_results_pred{decay_pred_size}.csv')
-        one_day_low_results.to_csv(f'results/futuretst_hourly_low_results_pred{decay_pred_size}.csv')
+        if args.sixhourly:
+            one_day_results.to_csv(f'results/futuretst_hourly_results_pred{decay_pred_size}_6hourly.csv')
+            one_day_high_results.to_csv(f'results/futuretst_hourly_high_results_pred{decay_pred_size}_6hourly.csv')
+            one_day_low_results.to_csv(f'results/futuretst_hourly_low_results_pred{decay_pred_size}_6hourly.csv')
+        else:
+            one_day_results.to_csv(f'results/futuretst_hourly_results_pred{decay_pred_size}.csv')
+            one_day_high_results.to_csv(f'results/futuretst_hourly_high_results_pred{decay_pred_size}.csv')
+            one_day_low_results.to_csv(f'results/futuretst_hourly_low_results_pred{decay_pred_size}.csv')
 
 
         # Print summary statistics

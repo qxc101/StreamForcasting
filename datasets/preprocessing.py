@@ -32,8 +32,12 @@ class TimeSeriesDataset(Dataset):
         return self.sequences[idx]
 
 
-def data_creation(basin_data,prev_time_steps, future_time_steps, train_batch_size, val_batch_size, test_batch_size):
+def data_creation(basin_data,prev_time_steps, future_time_steps, train_batch_size, val_batch_size, test_batch_size, ft_percentile=None):
+    # min_vals = basin_data.min(axis=0)
+    # max_vals = basin_data.max(axis=0)
+    # basin_data = (basin_data - min_vals) / (max_vals - min_vals)
     
+
     total_time_steps = basin_data.shape[0]
     train_size = int(total_time_steps * 0.8)
     val_size = int(total_time_steps * 0.1)
@@ -72,4 +76,17 @@ def data_creation(basin_data,prev_time_steps, future_time_steps, train_batch_siz
     val_dataloader = DataLoader(val_dataset, batch_size=val_batch_size, shuffle=False)
     test_dataloader = DataLoader(test_dataset, batch_size=test_batch_size, shuffle=False)
 
-    return train_dataloader, val_dataloader, test_dataloader
+    if ft_percentile == None:
+        return train_dataloader, val_dataloader, test_dataloader
+    else:
+        last_feature_values = train_basin_sequences[:, -1, -future_time_steps:].flatten() 
+        threshold = np.percentile(last_feature_values, ft_percentile) 
+        mask = np.any(train_basin_sequences[:, -1, -future_time_steps:] >= threshold, axis=1)  
+        
+        print(f"Threshold for feature values at percentile {ft_percentile}: {threshold}")
+
+        ft_train_basin_sequences = train_basin_sequences[mask] 
+        ft_train_dataset = TimeSeriesDataset(ft_train_basin_sequences)
+        ft_train_dataloader = DataLoader(ft_train_dataset, batch_size=train_batch_size, shuffle=True)
+        # import pdb; pdb.set_trace()
+        return ft_train_dataloader
