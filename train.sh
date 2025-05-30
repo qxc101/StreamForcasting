@@ -1,3 +1,6 @@
+# hourly 12 steps
+python FutureTST_train_eval_hourly_skip_batch.py --time_series_size 72 --d_model 128 --embedding_dropout 0.0 --mlp_dropout 0.1 --mlp_size 128 --num_heads 16 --num_transformer_layers 8 --patch_size 32 --pred_size 12 --stride_len 16
+
 # hourly 24 steps
 python FutureTST_train_eval_hourly_skip_batch.py --time_series_size 144 --d_model 128 --embedding_dropout 0.0 --mlp_dropout 0.1 --mlp_size 128 --num_heads 16 --num_transformer_layers 2 --patch_size 32 --pred_size 24 --stride_len 16
 
