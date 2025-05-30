@@ -190,7 +190,49 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--project", default="FutureTST_sweep", help="wandb project name")
     ap.add_argument("--count", type=int, default=200, help="number of sweep trials")
+    ap.add_argument("--continuesweep", action='store_true', default=False)  # <-- add if you belong to a team/org
+    ap.add_argument("--project", default="FutureTST_sweep")
+    ap.add_argument("--entity",  default="qic69")           # <-- add if you belong to a team/org
+    ap.add_argument("--sweep_id",  default="qic69/FutureTST_sweep/vpkr3q2k",          # <-- pass the existing id
+                    help="e.g. vpkr3q2k or qic69/FutureTST_sweep/vpkr3q2k")
+    ap.add_argument("--count", type=int, default=0,         # 0 = run until sweep is finished
+                    help="how many new trials to run")
     args = ap.parse_args()
-    sweep_id = wandb.sweep(SWEEP_DICT, project=args.project)
-    print(f"Created sweep {sweep_id}")
-    wandb.agent(sweep_id, function=sweep_train, count=args.count)
+    if args.continuesweep:
+        sweep_id_full = (
+            args.sweep_id if "/" in args.sweep_id
+            else f"{args.entity}/{args.project}/{args.sweep_id}"
+        )
+
+        wandb.agent(
+            sweep_id_full,
+            function=sweep_train,
+            count=args.count or None      # None = no cap, let W&B decide
+        )
+    else:
+        sweep_id = wandb.sweep(SWEEP_DICT, project=args.project)
+        print(f"Created sweep {sweep_id}")
+
+        wandb.agent(sweep_id, function=sweep_train, count=args.count)
+
+# if __name__ == "__main__":
+#     ap = argparse.ArgumentParser()
+#     ap.add_argument("--project", default="FutureTST_sweep")
+#     ap.add_argument("--entity",  default="qic69")           # <-- add if you belong to a team/org
+#     ap.add_argument("--sweep_id",  default="qic69/FutureTST_sweep/vpkr3q2k",          # <-- pass the existing id
+#                     help="e.g. vpkr3q2k or qic69/FutureTST_sweep/vpkr3q2k")
+#     ap.add_argument("--count", type=int, default=0,         # 0 = run until sweep is finished
+#                     help="how many new trials to run")
+#     args = ap.parse_args()
+
+#     sweep_id_full = (
+#         args.sweep_id if "/" in args.sweep_id
+#         else f"{args.entity}/{args.project}/{args.sweep_id}"
+#     )
+
+#     # **DO NOT call wandb.sweep() here**
+#     wandb.agent(
+#         sweep_id_full,
+#         function=sweep_train,
+#         count=args.count or None      # None = no cap, let W&B decide
+#     )

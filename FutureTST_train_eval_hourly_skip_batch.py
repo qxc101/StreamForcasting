@@ -126,7 +126,7 @@ def evaluation(model, test_dataloader):
     all_real_vals = []
     
     with torch.no_grad():
-        for batch in test_dataloader:
+        for batch in tqdm(test_dataloader):
             # Check for -999.0 values in the batch
             valid_indices = []
             for i in range(batch.shape[0]):
@@ -287,7 +287,7 @@ if __name__ == "__main__":
             model.to(device)
             print(f"Model loaded from {model_path}")
 
-            predicted_vals, real_vals = evaluation(model, test_dataloader)
+            predicted_vals, real_vals = evaluation(model, train_dataloader)
 
             # Evaluate model
             if args.sixhourly:
