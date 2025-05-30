@@ -730,7 +730,7 @@ def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, 
     plt.plot(x_values, real_vals, 'k-', linewidth=1, label='Observed', alpha=0.8)
     
     # selected_steps = np.array([1, 6, 12, 18, 24])
-    selected_steps = np.array([])
+    selected_steps = np.array([1, 6, 12, 18, 24])
     colors = plt.cm.viridis(np.linspace(0, 0.8, len(pred_lines)))
     for i, pred_line in enumerate(pred_lines):
         if plot_selected_steps:

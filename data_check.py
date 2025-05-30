@@ -31,7 +31,7 @@ def plot_csv_columns(csv_file_path):
     # Handle case where there's only one subplot
     if len(columns_to_plot) == 1:
         axes = [axes]
-    
+    df = df[:600]
     # Plot each column
     for i, column in enumerate(columns_to_plot):
         axes[i].plot(df.index, df[column], linewidth=2, marker='o', markersize=3)
@@ -102,7 +102,7 @@ def plot_csv_columns_combined(csv_file_path):
 # Example usage:
 if __name__ == "__main__":
     # Replace 'your_file.csv' with the actual path to your CSV file
-    csv_file_path = 'datasets/SMFV2_Data_withbasin.csv'
+    csv_file_path = 'datasets/SMFV2_Data_withbasin_6hourly.csv'
     
     print("Plotting each column separately:")
     plot_csv_columns(csv_file_path)
