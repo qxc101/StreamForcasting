@@ -730,7 +730,7 @@ def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, 
     plt.plot(x_values, real_vals, 'k-', linewidth=1, label='Observed', alpha=0.8)
     
     # selected_steps = np.array([1, 6, 12, 18, 24])
-    selected_steps = np.array([1, 6, 12, 18, 24])
+    selected_steps = np.array([])
     colors = plt.cm.viridis(np.linspace(0, 0.8, len(pred_lines)))
     for i, pred_line in enumerate(pred_lines):
         if plot_selected_steps:
@@ -741,15 +741,15 @@ def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, 
                 label=f'{i+1}-step ahead', alpha=0.7)
     
     # Add title and labels
-    title = f'Observed vs. Multi-step Predictions'
+    title = f'Streamflow -- training data (when to when)'
     if basin_id is not None:
         title = f'Basin {basin_id}: {title}'
-    plt.title(title, fontsize=14, fontweight='bold')
-    plt.xlabel('Time Index', fontsize=12)
-    plt.ylabel('Flow Value', fontsize=12)
+    plt.title(title, fontsize=20, fontweight='bold')
+    plt.xlabel('Time Index', fontsize=18)
+    plt.ylabel('Streamflow (CFS)', fontsize=18)
     
     # Add legend with a reasonable size
-    plt.legend(loc='upper right', ncol=2, fontsize=9)
+    plt.legend(loc='upper right', ncol=2, fontsize=12)
     
     # Add grid for better readability
     plt.grid(True, linestyle='--', alpha=0.3)
