@@ -3,7 +3,7 @@ import numpy as np
 import seaborn as sns
 import os
 from permetrics.regression import RegressionMetric
-
+import pandas as pd
 
 
 # def calculate_metrics_for_flow_category(real_vals, predicted_vals, percentile=None):
@@ -162,39 +162,42 @@ def plot_high_low_flow_comparison(real_vals, predicted_vals, basin_id, modelname
     high_indices = np.arange(len(high_real))
     axes[0].plot(high_indices, high_real, 'b-', linewidth=2, label='Observed')
     axes[0].plot(high_indices, high_pred, 'r--', linewidth=2, label='Predicted')
-    axes[0].set_title(f'High Flow Comparison (>90th percentile)', fontsize=14)
-    axes[0].set_xlabel('Index', fontsize=12)
-    axes[0].set_ylabel('Flow', fontsize=12)
+    axes[0].set_title(f'High Flow Comparison (>90th percentile)', fontsize=18, fontweight='bold')
+    axes[0].set_xlabel('Index', fontsize=16)
+    axes[0].set_ylabel('Streamflow (CFS)', fontsize=16)
     
     # 计算并显示高流量指标
     high_metrics = calculate_metrics_for_flow_category(high_real, high_pred)
     high_metrics_text = f'NSE: {high_metrics[1]:.4f}\nKGE: {high_metrics[0]:.4f}\nRMSE: {high_metrics[3]:.4f}'
-    axes[0].annotate(high_metrics_text, xy=(0.02, 0.95), xycoords='axes fraction', 
-                    bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
-    axes[0].legend()
+    axes[0].text(0.02, 0.95, high_metrics_text, transform=axes[0].transAxes, 
+                 fontsize=12, verticalalignment='top', horizontalalignment='left',
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    axes[0].legend(loc='upper right', ncol=2, fontsize=10)
     
     # 绘制低流量比较
     low_indices = np.arange(len(low_real))
     axes[1].plot(low_indices, low_real, 'b-', linewidth=2, label='Observed')
     axes[1].plot(low_indices, low_pred, 'r--', linewidth=2, label='Predicted')
-    axes[1].set_title(f'Low Flow Comparison (<10th percentile)', fontsize=14)
-    axes[1].set_xlabel('Index', fontsize=12)
-    axes[1].set_ylabel('Flow', fontsize=12)
+    axes[1].set_title(f'Low Flow Comparison (<10th percentile)', fontsize=18, fontweight='bold')
+    axes[1].set_xlabel('Index', fontsize=16)
+    axes[1].set_ylabel('Streamflow (CFS)', fontsize=16)
     
     # 计算并显示低流量指标
     low_metrics = calculate_metrics_for_flow_category(low_real, low_pred)
     low_metrics_text = f'NSE: {low_metrics[1]:.4f}\nKGE: {low_metrics[0]:.4f}\nRMSE: {low_metrics[3]:.4f}'
-    axes[1].annotate(low_metrics_text, xy=(0.02, 0.95), xycoords='axes fraction', 
-                   bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8))
-    axes[1].legend()
+    # Find the best position automatically to avoid blocking the subtitle
+    axes[1].text(0.0, 0.95, low_metrics_text, transform=axes[1].transAxes, 
+                 fontsize=12, verticalalignment='top', horizontalalignment='left',
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    axes[1].legend(loc='upper right', ncol=2, fontsize=10)
     
     # 调整布局并保存
-    plt.suptitle(f'Basin {basin_id}: Flow Regime Comparison', fontsize=16)
+    plt.suptitle(f'Site SMFV2: Flow Regime Comparison', fontsize=18, fontweight='bold')
     plt.tight_layout()
     plt.savefig(f'{save_path}/high_low_flow_comparison_{modelname}_basin_{basin_id}.png', dpi=300)
     plt.close()
     
-    print(f"High/Low flow comparison plot saved to {save_path}/high_low_flow_comparison_basin_{basin_id}.png")
+    print(f"High/Low flow comparison plot saved to {save_path}/high_low_flow_comparison_{modelname}_basin_{basin_id}.png")
 
 
 
@@ -499,7 +502,7 @@ def plot_r2_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, 
         plt.ylabel('Nash-Sutcliffe Efficiency (R2)', fontsize=12)
         
         # Set y-axis limits to make the plot look better
-        plt.ylim(0, 1.5)
+        plt.ylim(0, 1.1)
         
         # Add grid for better readability
         plt.grid(axis='y', linestyle='--', alpha=0.4)
@@ -573,18 +576,18 @@ def plot_nse_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1,
                 va = 'top'
             plt.text(bar.get_x() + bar.get_width()/2., y_pos,
                     f'{ts_nse[i]:.3f}', ha='center', va=va, 
-                    fontsize=9, rotation=90)
+                    fontsize=6, rotation=0)
         
         # Add title and labels
         title = f'NSE by Prediction Time Step'
         if basin_id is not None:
-            title = f'Basin {basin_id}: {title}'
-        plt.title(title, fontsize=14)
-        plt.xlabel('Prediction Time Step (Hours Ahead)', fontsize=12)
-        plt.ylabel('Nash-Sutcliffe Efficiency (NSE)', fontsize=12)
-        
+            title = f'Site SMFV2: {title}'
+        plt.title(title, fontsize=22,  fontweight='bold')
+        plt.xlabel('Prediction Time Step (Hours Ahead)', fontsize=18)
+        plt.ylabel('Nash-Sutcliffe Efficiency (NSE)', fontsize=18)
+        plt.tick_params(axis='both', which='major', labelsize=16)
         # Set y-axis limits to make the plot look better
-        plt.ylim(0, 1.5)
+        plt.ylim(0, 1.1)
         
         # Add grid for better readability
         plt.grid(axis='y', linestyle='--', alpha=0.4)
@@ -661,18 +664,18 @@ def plot_kge_of_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1,
                 va = 'top'
             plt.text(bar.get_x() + bar.get_width()/2., y_pos,
                     f'{ts_kge[i]:.3f}', ha='center', va=va, 
-                    fontsize=9, rotation=90)
+                    fontsize=6, rotation=0)
         
         # Add title and labels
         title = f'KGE by Prediction Time Step'
         if basin_id is not None:
-            title = f'Basin {basin_id}: {title}'
-        plt.title(title, fontsize=14)
-        plt.xlabel('Prediction Time Step (Hours Ahead)', fontsize=12)
-        plt.ylabel('KGE', fontsize=12)
-        
+            title = f'Site SMFV2: {title}'
+        plt.title(title, fontsize=22, fontweight='bold')
+        plt.xlabel('Prediction Time Step (Hours Ahead)', fontsize=18)
+        plt.ylabel('Kling-Gupta Efficiency (KGE)', fontsize=18)
+        plt.tick_params(axis='both', which='major', labelsize=16)
         # Set y-axis limits to make the plot look better
-        plt.ylim(0, 1.5)
+        plt.ylim(0, 1.1)
         
         # Add grid for better readability
         plt.grid(axis='y', linestyle='--', alpha=0.4)
@@ -723,34 +726,44 @@ def plot_ob_vs_pred_time_step(real_vals, predicted_vals, plot=True, basin_id=1, 
     os.makedirs(save_dir, exist_ok=True)
     
     # Create figure
-    plt.figure(figsize=(16, 8))
+    plt.figure(figsize=(16, 4))
     
     # Plot observed values
     x_values = np.arange(start, end)
+    # # For hourly data, start at April 26, 2022 at 15:00
+    # x_values = pd.date_range(start='2022-04-26 15:00', periods=end-start, freq='h')
+    # # For 6hourly data, start at December 16, 2021 at 18:00
+    # x_values = pd.date_range(start='2021-12-16 18:00', periods=end-start, freq='6h')
+
     plt.plot(x_values, real_vals, 'k-', linewidth=1, label='Observed', alpha=0.8)
     
+    # 12 and 24 pred:
     # selected_steps = np.array([1, 6, 12, 18, 24])
-    selected_steps = np.array([])
+    # 48 pred:
+    # selected_steps = np.array([1, 6, 12, 24 , 36, 48])
+    # 6 hourly 28 pred:
+    selected_steps = np.array([1, 7, 14, 21 , 28])
     colors = plt.cm.viridis(np.linspace(0, 0.8, len(pred_lines)))
     for i, pred_line in enumerate(pred_lines):
         if plot_selected_steps:
             if i not in selected_steps - 1:
                 continue
         plt.plot(x_values, pred_line, 
-                color=colors[i], linestyle='--', linewidth=1, 
+                color=colors[i], linestyle='--', linewidth=2, 
                 label=f'{i+1}-step ahead', alpha=0.7)
     
     # Add title and labels
-    title = f'Streamflow -- training data (when to when)'
+    title = f'Observed vs Multi-step Predictions for Streamflow'
     if basin_id is not None:
-        title = f'Basin {basin_id}: {title}'
-    plt.title(title, fontsize=20, fontweight='bold')
-    plt.xlabel('Time Index', fontsize=18)
-    plt.ylabel('Streamflow (CFS)', fontsize=18)
-    
+        title = f'Site SMFV2: {title}'
+    plt.title(title, fontsize=22, fontweight='bold')
+    plt.xlabel('Time Index (Year-Month-Day)', fontsize=20)
+    plt.ylabel('Streamflow (CFS)', fontsize=20)
+    plt.tick_params(axis='both', which='major', labelsize=10)
+    plt.tick_params(axis='x', rotation=45)
     # Add legend with a reasonable size
-    plt.legend(loc='upper right', ncol=2, fontsize=12)
-    
+    plt.legend(loc='best', ncol=2, fontsize=10)
+    # plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', ncol=4, fontsize=6)
     # Add grid for better readability
     plt.grid(True, linestyle='--', alpha=0.3)
     
@@ -788,7 +801,7 @@ def plot_detailed_prediction_results_multistep(real_vals, predicted_vals, basin_
     
     
     # ========== 图2: 多步散点图与1:1线 ==========
-    plt.figure(figsize=(12, 10))
+    plt.figure(figsize=(12, 8))
     
     max_val = max(np.max(real_vals), np.max(predicted_vals)) * 1.1
     min_val = min(np.min(real_vals), np.min(predicted_vals)) * 0.9
@@ -833,9 +846,9 @@ def plot_detailed_prediction_results_multistep(real_vals, predicted_vals, basin_
     
     plt.xlim(min_val, max_val)
     plt.ylim(min_val, max_val)
-    plt.title(f'Basin {basin_id}: Multi-step Prediction Scatter Plot', fontsize=18, fontweight='bold')
-    plt.xlabel('Observed Flow', fontsize=14)
-    plt.ylabel('Predicted Flow', fontsize=14)
+    plt.title(f'Site SMFV2: Multi-step Prediction Scatter Plot', fontsize=20, fontweight='bold')
+    plt.xlabel('Observed Flow', fontsize=18)
+    plt.ylabel('Predicted Flow', fontsize=18)
     plt.legend(fontsize=12, loc='upper left')
     plt.grid(True, alpha=0.3)
     

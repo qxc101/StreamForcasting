@@ -93,7 +93,7 @@ def plot_csv_test_QR(csv_file_path):
         end_year = end_date.year
         
         # Print exact start and end dates
-        print(f"Training data period: {start_date.strftime('%B %d, %Y at %H:%M')} to {end_date.strftime('%B %d, %Y at %H:%M')}")
+        print(f"Testing data period: {start_date.strftime('%B %d, %Y at %H:%M')} to {end_date.strftime('%B %d, %Y at %H:%M')}")
         
         axes[i].plot(df_train.index, df_train[column], linewidth=1)
         axes[i].set_title(f'Streamflow -- testing data ({start_year} to {end_year})', fontsize=22, fontweight='bold') 
@@ -149,7 +149,7 @@ def plot_csv_QR_MAP(csv_file_path):
 
         if column == 'QR (CFS)':
             # axes[i].set_title(f'Streamflow -- data ({start_year} to {end_year})', fontsize=22, fontweight='bold') 
-            axes[i].set_ylabel("Streamflow  R (CFS)", fontsize=22)
+            axes[i].set_ylabel("Streamflow (CFS)", fontsize=22)
             axes[i].grid(True, alpha=0.3)
             axes[i].tick_params(axis='both', which='major', labelsize=20)
             # Remove x-axis labels for QR subplot
@@ -223,7 +223,7 @@ def plot_csv_QR_MAP(csv_file_path):
 
 if __name__ == "__main__":
     # Replace 'your_file.csv' with the actual path to your CSV file
-    csv_file_path = 'datasets/SMFV2_Data_withbasin.csv'
+    csv_file_path = 'datasets/SMFV2_Data_withbasin_6hourly.csv'
     plot_csv_train_QR(csv_file_path)
     plot_csv_test_QR(csv_file_path)
 
