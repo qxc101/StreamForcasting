@@ -377,6 +377,103 @@ class FutureTST(nn.Module):
         # noise = torch.randn(x[:, :-1, :].shape,device=x.device) * sigma
         # exogeneous_data = x[:, :-1, :] + noise # Add noise to the data
 
+        # exogeneous_data = x[:, :-1, :]
+
+        # endogeneous_data =  torch.unsqueeze(x[:, -1, :self.context_window_size], axis=1)
+
+        # # # Split exogenous features
+        hg_past = x[:, 0:1, :self.context_window_size]  # Only past HG values
+        map_full = x[:, 1:2, :]  # Full MAP values (past + future)
+        
+        # Pad HG with zeros for future steps to match map_full dimensions
+        hg_future_padding = torch.zeros_like(x[:, 0:1, self.context_window_size:])
+        hg_full = torch.cat([hg_past, hg_future_padding], dim=2)  # HG: past + padding
+        
+        exogeneous_data = torch.cat([hg_full, map_full], dim=1)
+        
+        endogeneous_data = torch.unsqueeze(x[:, -1, :self.context_window_size], axis=1)
+
+        endogeneous_data, means, stdev = self.normalizer.normalize(endogeneous_data)
+
+        #print (f'Shape of Exogenous Input is {exogeneous_data.shape} and endogenous Input {endogeneous_data.shape}')
+
+        # Extract patches from the endogeneous & exogeneeous data  (batch, channel, patch_size, num_patches)
+        endogeneous_patches = self.extract_patches(endogeneous_data)
+        # exogeneous_patches = self.extract_patches(exogeneous_data)
+
+        #print (f'Shape of Patches are {exogeneous_data.shape}, {endogeneous_patches.shape}')
+
+        # Project the patches to the dimension expected by the transformer decoder
+        # Endo: (batch, channel, d_model, num_patches)
+        endogeneous_patches = self.linear_projection_layer(endogeneous_patches)
+        # Exo: (B,channel,past_steps+future_steps) -> (B, channel, d_model) --> (B, 1, channel, d_model) --> (B, 1, d_model, channel)
+
+
+        exogeneous_patches = self.exogeneous_feature_projection(exogeneous_data).unsqueeze(1).permute(0, 1, 3, 2)
+
+        #print (f'Shape of Projected Patches are {exogeneous_patches.shape}, {endogeneous_patches.shape}')
+
+        # Apply positional encoding to the patches (B, channel, d_model, num_patches) --> (B*channel, num_patches, d_model)
+        endogeneous_patches = self.endo_positional_encoding(endogeneous_patches.view(-1, self.d_model, self.num_endoPatch).permute(0, 2, 1))
+        exogeneous_patches = self.exo_positional_encoding(exogeneous_patches.view(-1, self.d_model, self.input_channels - 1).permute(0, 2, 1))
+
+        #print (f'Shape of Positional Encoded Patches are {exogeneous_patches.shape}, {endogeneous_patches.shape}')
+
+        encoder_output = self.transformer.encode(exogeneous_patches, None) # (B, seq_len, d_model)
+        #print (f'Shape of Encoder Output is {encoder_output.shape}')
+        #print(f'Shape of Endogenous Patches is {endogeneous_patches.shape}')
+        decoder_output = self.transformer.decode(encoder_output, None, endogeneous_patches, None) # (B, seq_len, d_model)
+
+        #print (f'Shape of Decoder Output is {decoder_output.shape}')
+        # Project the transformer decoder output to the prediction size
+
+        predictions = self.linear_head(decoder_output).unsqueeze(1)
+
+        predictions = self.normalizer.denormalize(predictions, means, stdev)
+
+        return predictions
+
+class FutureTST_custom(nn.Module):
+    def __init__(self,context_window_size=365, patch_size=16, stride_len=8, d_model=256,
+                 num_transformer_layers=2, mlp_size=128, num_heads=8, mlp_dropout=0.2,
+                 pred_size=20, embedding_dropout=0.1,input_channels=0):
+        super().__init__()
+
+
+        self.patch_size = patch_size
+        self.stride_len = stride_len
+        self.pred_size = pred_size
+        self.context_window_size = context_window_size
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.num_transformer_layers = num_transformer_layers
+        self.mlp_size = mlp_size
+        self.mlp_dropout = mlp_dropout
+        self.embedding_dropout = embedding_dropout
+        self.input_channels = input_channels
+
+        self.num_endoPatch = int(np.floor((self.context_window_size - self.patch_size) / stride_len) + 2)
+        # self.num_exoPatch = int(np.floor((self.context_window_size+self.pred_size - patch_size) / stride_len) + 2)
+        self.normalizer = TimeSeriesNormalizer()
+        self.extract_patches = ExtractPatches(self.patch_size, self.stride_len)
+        self.exogeneous_feature_projection = nn.Linear(self.context_window_size+self.pred_size, self.d_model)
+        self.linear_projection_layer = LinearProjectionLayer(self.patch_size, self.d_model)
+        self.endo_positional_encoding = PositionalEncoding(self.d_model, self.num_endoPatch, self.embedding_dropout)
+        self.exo_positional_encoding = PositionalEncoding(self.d_model,  self.input_channels - 1 , self.embedding_dropout)
+        self.transformer = build_transformer(d_model=self.d_model, N=self.num_transformer_layers, h=self.num_heads, dropout=self.mlp_dropout, d_ff=self.mlp_size)
+
+        # Linear layer to project transformer decoder output to the prediction size
+        self.linear_head = LinearHead(self.d_model, self.num_endoPatch, self.pred_size)
+
+
+
+    def forward(self, x : torch.Tensor):
+        # (batch, channel, past_steps+future_steps) -->  (batch, until_last_channel, past_steps+future_steps) and (batch, last_channel, past_steps)
+
+        # sigma = 0.1  # Standard deviation of the Gaussian noise
+        # noise = torch.randn(x[:, :-1, :].shape,device=x.device) * sigma
+        # exogeneous_data = x[:, :-1, :] + noise # Add noise to the data
+
         exogeneous_data = x[:, :-1, :]
 
         endogeneous_data =  torch.unsqueeze(x[:, -1, :self.context_window_size], axis=1)
